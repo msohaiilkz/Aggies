@@ -1,0 +1,330 @@
+MVP Generator Prompt — Fraud Monitoring
+
+Goal: Build a Fraud Monitoring & Alert Investigation SaaS with role-based dashboards.
+
+Business Head Dashboard: executive KPIs + trends.
+
+Analyst Dashboard & Alert Investigation: alerts table, filters, drill-downs, fraud marking.
+
+Login credentials decide which dashboard appears.
+
+TECH STACK (opinionated)
+
+Frontend: React + Vite, TailwindCSS, shadcn/ui, TanStack Table, Recharts, React Router.
+
+Backend: Node.js (Express) + TypeScript, zod for validation.
+
+DB: MySQL 8+ via mysql2/promise (no Prisma).
+
+Auth: Email/Password (JWT). Buttons for Google/Facebook as stubs.
+
+Maps (optional): Leaflet/Mapbox placeholder.
+
+Provide one-click seed script to create schema + demo data + 2 demo users.
+
+ROLES
+
+BUSINESS_HEAD — executive overview (read-only).
+
+ANALYST — alert triage, investigation detail, mark-as-fraud actions.
+
+Enforce RBAC in API and UI routes.
+
+DATA MODEL (MySQL DDL)
+CREATE TABLE users (
+  id            VARCHAR(191) PRIMARY KEY,
+  email         VARCHAR(191) NOT NULL UNIQUE,
+  password_hash VARCHAR(255) NOT NULL,
+  role          ENUM('BUSINESS_HEAD','ANALYST') NOT NULL,
+  created_at    TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+  updated_at    TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP
+);
+
+CREATE TABLE customers (
+  id             VARCHAR(191) PRIMARY KEY,
+  name           VARCHAR(191) NOT NULL,
+  national_id    VARCHAR(64),
+  global_id      VARCHAR(64),
+  gender         VARCHAR(16),
+  age            INT,
+  phone          VARCHAR(32),
+  email          VARCHAR(191),
+  customer_since DATETIME,
+  profession     VARCHAR(191)
+);
+
+CREATE TABLE accounts (
+  id           VARCHAR(191) PRIMARY KEY,
+  customer_id  VARCHAR(191) NOT NULL,
+  last_login   DATETIME,
+  age_years    INT,
+  highest_txn  INT,
+  lowest_txn   INT,
+  avg_txn      INT,
+  FOREIGN KEY (customer_id) REFERENCES customers(id)
+);
+
+CREATE TABLE transactions (
+  id            VARCHAR(191) PRIMARY KEY,
+  customer_id   VARCHAR(191) NOT NULL,
+  ts            DATETIME NOT NULL,
+  channel       VARCHAR(64) NOT NULL, -- IBFT, Bill Payment, Easy Paisa, POS, ATM, Digital App
+  amount_pkr    INT NOT NULL,
+  risk_score    INT NOT NULL,         -- 0-100
+  flagged       TINYINT(1) DEFAULT 0,
+  city          VARCHAR(64),
+  FOREIGN KEY (customer_id) REFERENCES customers(id),
+  INDEX idx_txn_customer_ts (customer_id, ts),
+  INDEX idx_txn_flagged (flagged)
+);
+
+CREATE TABLE alerts (
+  id             VARCHAR(191) PRIMARY KEY,
+  customer_id    VARCHAR(191) NOT NULL,
+  transaction_id VARCHAR(191),
+  severity       ENUM('LOW','MEDIUM','HIGH') NOT NULL,
+  amount_pkr     INT NOT NULL,
+  count          INT DEFAULT 1,
+  status         ENUM('OPEN','DISMISSED','SUSPENDED','MARKED_FRAUD') DEFAULT 'OPEN',
+  created_at     DATETIME DEFAULT CURRENT_TIMESTAMP,
+  FOREIGN KEY (customer_id) REFERENCES customers(id),
+  FOREIGN KEY (transaction_id) REFERENCES transactions(id),
+  INDEX idx_alerts_status (status),
+  INDEX idx_alerts_customer (customer_id)
+);
+
+CREATE TABLE investigation_notes (
+  id         VARCHAR(191) PRIMARY KEY,
+  alert_id   VARCHAR(191) NOT NULL,
+  author_id  VARCHAR(191) NOT NULL,
+  kind       ENUM('TEXT','VOICE') NOT NULL,
+  content    TEXT NOT NULL,
+  created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+  FOREIGN KEY (alert_id) REFERENCES alerts(id),
+  FOREIGN KEY (author_id) REFERENCES users(id)
+);
+
+CREATE TABLE audit_logs (
+  id        VARCHAR(191) PRIMARY KEY,
+  actor_id  VARCHAR(191),
+  action    VARCHAR(191) NOT NULL,
+  entity    VARCHAR(191) NOT NULL,
+  entity_id VARCHAR(191),
+  details   JSON,
+  created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+  INDEX idx_audit_entity (entity, entity_id)
+);
+
+CREATE TABLE metric_snapshots (
+  id                  VARCHAR(191) PRIMARY KEY,
+  at                  DATETIME DEFAULT CURRENT_TIMESTAMP,
+  suspected_accounts  INT,
+  suspended_txns      INT,
+  unreviewed_accounts INT,
+  actual_frauds       INT,
+  num_frauds          INT,
+  loss_amount_pkr     INT,
+  accuracy_pct        INT,
+  precision_pct       INT,
+  recall_pct          INT,
+  f1_pct              INT
+);
+
+CREATE TABLE report_jobs (
+  id         VARCHAR(191) PRIMARY KEY,
+  type       VARCHAR(64) NOT NULL,          -- FraudList, TrendSummary, AnalystPerformance, FalsePositiveRate, FinancialImpact
+  range_from DATETIME NOT NULL,
+  range_to   DATETIME NOT NULL,
+  format     ENUM('PDF','CSV','XLS') NOT NULL,
+  status     ENUM('QUEUED','DONE') NOT NULL,
+  url        VARCHAR(255),
+  created_at DATETIME DEFAULT CURRENT_TIMESTAMP
+);
+
+
+.env example
+
+DATABASE_URL="mysql://root:password@localhost:3306/fraud_mvp"
+JWT_SECRET="dev_secret_change_me"
+
+
+DB client: mysql2/promise pool (single instance).
+
+BACKEND – API CONTRACT (Express + zod + mysql2)
+
+Auth
+
+POST /api/auth/login → { email, password } → { accessToken, user:{ id, role } }
+
+KPIs & Dashboard
+
+GET /api/kpis/overview?range=today|week|month
+
+GET /api/kpis/trends?bucket=week|month&metric=loss|count
+
+GET /api/kpis/performance?months=6
+
+GET /api/kpis/geo?range=week
+
+GET /api/kpis/breakdown?by=category|instrument&range=week
+
+Alerts & Investigation
+
+GET /api/alerts?from&to&city&amountMin&amountMax&globalId&page
+
+GET /api/alerts/:id
+
+POST /api/alerts/:id/mark → { action: "MARKED_FRAUD|SUSPENDED|DISMISSED", reason, fraudType, note? }
+
+POST /api/alerts/:id/notes → { kind, content }
+
+Customers & Transactions
+
+GET /api/customers/:id
+
+GET /api/customers/:id/transactions?limit=50
+
+Reports
+
+GET /api/reports/catalog
+
+POST /api/reports/run → { type, rangeFrom, rangeTo, format }
+
+GET /api/reports/:id
+
+Admin (seed/demo only)
+
+POST /api/admin/seed → runs schema + demo inserts.
+
+All POST bodies validated with zod. Protect endpoints with JWT + role guards.
+
+FRONTEND – ROUTES & PAGES
+
+/login — email/password; social buttons as UI only.
+
+/dashboard — role-aware:
+
+BUSINESS_HEAD: KPI cards, Fraud Loss trends (week & month), Fraud Trend Analytics, Geographic map, breakdowns (by category/instrument), System Performance (Accuracy/Precision/Recall/F1).
+
+ANALYST: Active Alerts table + filters + quick stats.
+
+/alerts — table with pagination; row click → drawer/modal showing Customer profile, last 3 transactions + risk scores, AI recommendation (probability % + suggested action), actions: Mark Fraud / Suspend / Discard, add Text/Voice note (voice is stub).
+
+/reports — report catalog (Fraud List, Trend Summary, Analyst Performance, False Positives Rate, Financial Impact), date range picker, PDF/CSV/XLS run & mock download.
+
+/performance — Accuracy/Precision/Recall/F1 trend (last 6 months) + gauges.
+
+/settings — profile + integrations (stubs).
+
+Navigation: Home/Dashboard, Frauds, Alerts, Reports & Analysis, System Performance, Integrations, Settings.
+
+UI COMPONENTS
+
+KPI Cards (label, value, subtitle, trendTag)
+
+Time-range Picker (Today, Last Week, Last Month + custom calendar)
+
+Charts (Recharts): Line/Bar/Pie/Area
+
+Geo Heat Map (Leaflet markers)
+
+Alerts Table (TanStack Table), severity badges, column filters
+
+Investigation Drawer/Modal: details, actions, notes (tabs)
+
+Report Runner: date range + format pills; on submit → mock file URL + “Report Downloaded Successfully” toast
+
+SEED DATA (script)
+
+Create users:
+
+Business Head: exec@example.com / password123 / role BUSINESS_HEAD
+
+Analyst: analyst@example.com / password123 / role ANALYST
+
+Populate:
+
+metric_snapshots for 6+ months (realistic variance).
+
+Today KPIs (e.g., suspected=120, suspended=300, unreviewed=45, actual_frauds=13).
+
+Geo distribution across major Pakistani cities.
+
+100+ transactions (IBFT, Bill Payment, Easy Paisa, POS/ATM, Digital App) with risk scores.
+
+40+ alerts (varying severity/amount); at least one detailed customer with repeated high-risk IBFTs (e.g., “Kelvin Harris”).
+
+Command:
+
+npm run db:setup   # executes DDL via mysql2
+npm run seed       # inserts demo data via mysql2
+
+BUSINESS LOGIC (MVP stubs)
+
+AI Recommendation (deterministic mock)
+computeRecommendation(customer, txns) → { probabilityPct, summary, suggestedAction } using heuristics:
+
+High risk if multiple high-amount transfers within 30 min to new beneficiaries.
+
+Escalate when risk_score ≥ 90 or repeated attempts in last 24h.
+
+Mark as Fraud
+
+Update alert status, write audit_logs entry, append investigation_notes, success toast.
+
+SECURITY & GUARDS
+
+JWT in httpOnly cookie (dev fallback to localStorage allowed).
+
+Middlewares: requireAuth, requireRole(Role), input validation, error formatter.
+
+UI route guards & conditional nav by role.
+
+DX & SCRIPTS
+
+npm run dev — concurrently start client + server
+
+npm run db:setup — create DB schema (MySQL)
+
+npm run seed — insert demo data
+
+npm run build && npm start — production
+
+Docker MySQL (example):
+
+docker run --name fraud-mvp-mysql \
+  -e MYSQL_ROOT_PASSWORD=password \
+  -e MYSQL_DATABASE=fraud_mvp \
+  -p 3306:3306 -d mysql:8
+
+ACCEPTANCE CRITERIA
+
+Login routes to correct dashboard by role.
+
+Business Head sees KPIs, week/month charts, breakdowns, geo map, performance metrics.
+
+Analyst sees alerts table + filters; row opens investigation drawer with profile, last 3 txns, risk scores, AI recommendation, and action buttons.
+
+“Mark as Fraud” updates status, shows success toast, writes audit log + note.
+
+Reports page runs a fake job and returns a downloadable file URL (PDF/CSV/XLS).
+
+Performance page shows Accuracy/Precision/Recall/F1 trend (6 months).
+
+NICE-TO-HAVES
+
+Server-side pagination for alerts.
+
+Export alerts CSV.
+
+Dev role switcher.
+
+Theme toggle (light/dark) with teal/blue accent.
+
+STYLE NOTES
+
+Clean enterprise look (light background, teal/blue accents).
+
+Large KPI numbers, consistent spacing, accessible contrast.
+
+shadcn/ui Cards, Badges, Tabs, Dialog for modals/drawers.
