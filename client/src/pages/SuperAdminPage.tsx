@@ -30,6 +30,7 @@ import {
   DialogDescription,
   DialogFooter,
 } from "@/components/ui/dialog";
+import { AlertControlPanel } from "@/components/AlertControlPanel";
 
 // ─── Activate confirmation dialog ────────────────────────────────────────────
 function ActivateConfirmModal({
@@ -368,6 +369,9 @@ export default function SuperAdminPage() {
               </div>
             </div>
           )}
+
+          {/* Alert limit + assignments */}
+          <AlertControlPanel />
 
           {/* Table */}
           <Card className="bg-white border-0 shadow-sm">

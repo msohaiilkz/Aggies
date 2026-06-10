@@ -12,9 +12,12 @@ export interface Analyst {
   casesResolved: number;
   createdAt: string;
   createdBy?: string;
+  maxAlerts?: number;
 }
 
 const STORAGE_KEY = "agess_analysts";
+export const DEFAULT_MAX_ALERTS = 10;
+export const MAX_ALERTS_OPTIONS = [5, 10, 20, 30, 50, 100];
 
 // Seed demo data only once
 const SEED_DATA: Analyst[] = [
@@ -127,6 +130,15 @@ export function updateAnalyst(id: string, updates: Partial<Analyst>): boolean {
   const idx = analysts.findIndex((a) => a.id === id);
   if (idx === -1) return false;
   analysts[idx] = { ...analysts[idx], ...updates };
+  saveAnalysts(analysts);
+  return true;
+}
+
+export function updateAnalystMaxAlerts(id: string, maxAlerts: number): boolean {
+  const analysts = getAnalysts();
+  const idx = analysts.findIndex((a) => a.id === id);
+  if (idx === -1) return false;
+  analysts[idx].maxAlerts = maxAlerts;
   saveAnalysts(analysts);
   return true;
 }

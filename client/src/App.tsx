@@ -12,6 +12,7 @@ import Transactions from "@/pages/TransactionsTable";
 import ReportsPage from "@/pages/reports-page";
 import TeamManagementPage from "@/pages/TeamManagementPage";
 import SuperAdminPage from "@/pages/SuperAdminPage";
+import FilesPage from "@/pages/files-page";
 import NotFound from "@/pages/not-found";
 
 function Router() {
@@ -24,6 +25,7 @@ function Router() {
       <ProtectedRoute path="/team-management" component={TeamManagementPage} />
       <ProtectedRoute path="/super-admin" component={SuperAdminPage} />
       <ProtectedRoute path="/reports" component={ReportsPage} />
+      <ProtectedRoute path="/files" component={FilesPage} />
       <Route path="/auth" component={AuthPage} />
       <Route component={NotFound} />
     </Switch>

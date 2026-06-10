@@ -21,6 +21,7 @@ import {
   Shield,
   Landmark,
   ShieldCheck,
+  FolderUp,
 } from "lucide-react";
 
 import { cn } from "@/lib/utils";
@@ -43,6 +44,12 @@ export function Sidebar({ isOpen, setIsOpen }: SidebarProps) {
       name: "Dashboard",
       href: "/",
       icon: LayoutDashboard,
+      roles: ["BUSINESS_HEAD", "ANALYST", "SUPER_EXECUTIVE"],
+    },
+    {
+      name: "Files",
+      href: "/files",
+      icon: FolderUp,
       roles: ["BUSINESS_HEAD", "ANALYST", "SUPER_EXECUTIVE"],
     },
     {

@@ -16,6 +16,7 @@ import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { MainLayout } from "@/components/layout/main-layout";
 import { getAnalysts, initAnalysts, type Analyst } from "@/hooks/use-analysts";
+import { AlertControlPanel } from "@/components/AlertControlPanel";
 
 export default function TeamManagementPage() {
   const [analysts, setAnalysts] = useState<Analyst[]>([]);
@@ -176,6 +177,9 @@ export default function TeamManagementPage() {
               </div>
             </div>
           )}
+
+          {/* Alert limit + assignments */}
+          <AlertControlPanel />
 
           {/* Analyst Directory */}
           <Card className="bg-white border-0 shadow-sm">
