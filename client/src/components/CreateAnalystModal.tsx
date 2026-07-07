@@ -18,7 +18,7 @@ import {
 } from "@/components/ui/select";
 import { useToast } from "@/hooks/use-toast";
 import { UserPlus, Loader2, ShieldCheck, Mail, Lock, Clock } from "lucide-react";
-import { addAnalyst } from "@/hooks/use-analysts";
+import { addRequest } from "@/hooks/use-analyst-requests";
 import { useAuth } from "@/hooks/use-auth";
 
 export function CreateAnalystModal({
@@ -60,19 +60,22 @@ export function CreateAnalystModal({
     setIsLoading(true);
 
     setTimeout(() => {
-      addAnalyst({
-        name: `${formData.firstName} ${formData.lastName}`.trim(),
-        username: formData.username,
-        email: formData.email || undefined,
-        role: formData.role,
-        status: "Pending",           // ← Always starts as Pending
-        createdBy: user?.email || "executive",
+      // Executive can only REQUEST — Super Admin approves on the Super Admin page.
+      addRequest({
+        type: "ADD",
+        requestedBy: user?.email || "executive",
+        addPayload: {
+          name: `${formData.firstName} ${formData.lastName}`.trim(),
+          username: formData.username,
+          email: formData.email || undefined,
+          role: formData.role,
+        },
       });
 
       setIsLoading(false);
       toast({
-        title: "Analyst Account Created",
-        description: `${formData.firstName} ${formData.lastName} added with Pending status. Awaiting Super Admin activation.`,
+        title: "Request Sent for Approval",
+        description: `Request to add ${formData.firstName} ${formData.lastName} has been sent to the Super Admin for approval.`,
       });
       setFormData({
         firstName: "",
@@ -98,18 +101,18 @@ export function CreateAnalystModal({
             Create Analyst Account
           </DialogTitle>
           <DialogDescription className="text-gray-500 mt-1.5">
-            Register a new analyst to the platform. The account will be{" "}
-            <strong>pending</strong> until a Super Admin activates it.
+            Submit a request to add a new analyst. It will be created only
+            after a <strong>Super Admin approves</strong> your request.
           </DialogDescription>
         </DialogHeader>
 
-        {/* Pending status notice */}
+        {/* Approval-required notice */}
         <div className="bg-amber-50 p-3 rounded-lg flex items-start gap-3 border border-amber-200 mt-1">
           <Clock className="w-4 h-4 text-amber-600 mt-0.5 shrink-0" />
           <div className="text-xs text-amber-800 leading-relaxed">
-            <strong>Activation Required:</strong> New analysts are set to{" "}
-            <strong>Pending</strong> by default. A Super Admin must activate
-            the account before the analyst can access the system.
+            <strong>Approval Required:</strong> The Executive can only{" "}
+            <strong>request</strong> a new analyst. A Super Admin must approve
+            the request before the account is created.
           </div>
         </div>
 
@@ -223,10 +226,10 @@ export function CreateAnalystModal({
               {isLoading ? (
                 <>
                   <Loader2 className="mr-2 h-4 w-4 animate-spin" />
-                  Creating...
+                  Sending...
                 </>
               ) : (
-                "Create Account"
+                "Send Request"
               )}
             </Button>
           </DialogFooter>

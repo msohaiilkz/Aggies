@@ -21,7 +21,15 @@ import {
   updateAnalystStatus,
   type Analyst,
 } from "@/hooks/use-analysts";
+import {
+  getPendingRequests,
+  approveRequest,
+  rejectRequest,
+  REQUESTS_EVENT,
+  type AnalystRequest,
+} from "@/hooks/use-analyst-requests";
 import { useToast } from "@/hooks/use-toast";
+import { useSearch } from "@/hooks/use-search";
 import {
   Dialog,
   DialogContent,
@@ -100,7 +108,9 @@ function ActivateConfirmModal({
 // ─── Main page ────────────────────────────────────────────────────────────────
 export default function SuperAdminPage() {
   const { toast } = useToast();
+  const { query: globalQuery, setPlaceholder } = useSearch();
   const [analysts, setAnalysts] = useState<Analyst[]>([]);
+  const [requests, setRequests] = useState<AnalystRequest[]>([]);
   const [searchQuery, setSearchQuery] = useState("");
   const [statusFilter, setStatusFilter] = useState<string>("all");
   const [activatingAnalyst, setActivatingAnalyst] = useState<Analyst | null>(null);
@@ -108,27 +118,76 @@ export default function SuperAdminPage() {
   const load = useCallback(() => {
     initAnalysts();
     setAnalysts(getAnalysts());
+    setRequests(getPendingRequests());
   }, []);
 
   useEffect(() => {
     load();
-    const onStorage = () => load();
-    window.addEventListener("storage", onStorage);
-    return () => window.removeEventListener("storage", onStorage);
+    const onChange = () => load();
+    window.addEventListener("storage", onChange);
+    window.addEventListener(REQUESTS_EVENT, onChange);
+    return () => {
+      window.removeEventListener("storage", onChange);
+      window.removeEventListener(REQUESTS_EVENT, onChange);
+    };
   }, [load]);
+
+  useEffect(() => {
+    setPlaceholder("Search analysts (name, username, role)...");
+  }, [setPlaceholder]);
+
+  const requestLabel = (r: AnalystRequest) => {
+    if (r.type === "ADD")
+      return {
+        title: "Add Analyst",
+        detail: `${r.addPayload?.name} (@${r.addPayload?.username}) — ${r.addPayload?.role}`,
+      };
+    if (r.type === "REMOVE")
+      return { title: "Remove Analyst", detail: r.analystName || "" };
+    return {
+      title: "Update Analyst Role",
+      detail: `${r.analystName} → ${r.newRole || ""}${r.newStatus ? ` · ${r.newStatus}` : ""}`,
+    };
+  };
+
+  const handleApprove = (r: AnalystRequest) => {
+    approveRequest(r.id);
+    load();
+    toast({
+      title: "Request Approved ✅",
+      description: `${requestLabel(r).title} request has been approved and applied.`,
+    });
+  };
+
+  const handleReject = (r: AnalystRequest) => {
+    rejectRequest(r.id);
+    load();
+    toast({
+      title: "Request Rejected",
+      description: `${requestLabel(r).title} request has been rejected.`,
+      variant: "destructive",
+    });
+  };
 
   // Sort: Pending first, then Active, then Inactive
   const statusOrder: Record<string, number> = { Pending: 0, Active: 1, Inactive: 2 };
 
+  const gq = globalQuery.trim().toLowerCase();
   const filtered = analysts
     .filter((a) => {
       const matchSearch =
         a.name.toLowerCase().includes(searchQuery.toLowerCase()) ||
         a.username.toLowerCase().includes(searchQuery.toLowerCase());
+      const matchGlobal =
+        !gq ||
+        a.name.toLowerCase().includes(gq) ||
+        a.username.toLowerCase().includes(gq) ||
+        a.role.toLowerCase().includes(gq) ||
+        a.status.toLowerCase().includes(gq);
       const matchStatus =
         statusFilter === "all" ||
         a.status.toLowerCase() === statusFilter.toLowerCase();
-      return matchSearch && matchStatus;
+      return matchSearch && matchGlobal && matchStatus;
     })
     .sort((a, b) => (statusOrder[a.status] ?? 3) - (statusOrder[b.status] ?? 3));
 
@@ -369,6 +428,88 @@ export default function SuperAdminPage() {
               </div>
             </div>
           )}
+
+          {/* Pending approval requests (Add / Remove / Role Update) */}
+          <Card className="bg-white border-0 shadow-sm">
+            <CardHeader className="px-6 py-5 border-b border-gray-50">
+              <CardTitle className="text-lg font-bold flex items-center gap-2">
+                Approval Requests
+                {requests.length > 0 && (
+                  <Badge className="bg-amber-100 text-amber-700 hover:bg-amber-100 border-0">
+                    {requests.length} pending
+                  </Badge>
+                )}
+              </CardTitle>
+              <p className="text-sm text-gray-500 mt-1">
+                Executive requests for adding, removing or updating analysts —
+                approve or reject below.
+              </p>
+            </CardHeader>
+            <CardContent className="p-0">
+              {requests.length === 0 ? (
+                <div className="p-8 text-center text-gray-400 text-sm">
+                  No pending requests.
+                </div>
+              ) : (
+                <ul className="divide-y divide-gray-50">
+                  {requests.map((r) => {
+                    const { title, detail } = requestLabel(r);
+                    const tone =
+                      r.type === "ADD"
+                        ? "bg-green-100 text-green-700"
+                        : r.type === "REMOVE"
+                          ? "bg-red-100 text-red-700"
+                          : "bg-blue-100 text-blue-700";
+                    return (
+                      <li
+                        key={r.id}
+                        className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 p-4"
+                      >
+                        <div className="min-w-0">
+                          <div className="flex items-center gap-2">
+                            <Badge className={`${tone} hover:${tone} border-0`}>
+                              {title}
+                            </Badge>
+                            <span className="text-sm font-semibold text-gray-900 truncate">
+                              {detail}
+                            </span>
+                          </div>
+                          <p className="text-xs text-gray-400 mt-1">
+                            Requested by {r.requestedBy} ·{" "}
+                            {new Date(r.createdAt).toLocaleString("en-PK", {
+                              month: "short",
+                              day: "numeric",
+                              hour: "2-digit",
+                              minute: "2-digit",
+                            })}
+                          </p>
+                        </div>
+                        <div className="flex items-center gap-2 shrink-0">
+                          <Button
+                            size="sm"
+                            variant="outline"
+                            className="h-8 text-red-600 border-red-200 hover:bg-red-50"
+                            onClick={() => handleReject(r)}
+                          >
+                            <XCircle className="w-3.5 h-3.5 mr-1" />
+                            Reject
+                          </Button>
+                          <Button
+                            size="sm"
+                            className="h-8 bg-green-600 hover:bg-green-700 text-white"
+                            onClick={() => handleApprove(r)}
+                          >
+                            <CheckCircle2 className="w-3.5 h-3.5 mr-1" />
+                            Approve
+                          </Button>
+                        </div>
+                      </li>
+                    );
+                  })}
+                </ul>
+              )}
+            </CardContent>
+          </Card>
 
           {/* Alert limit + assignments */}
           <AlertControlPanel />

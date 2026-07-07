@@ -1,6 +1,7 @@
 import { useState } from "react";
 import { Sidebar } from "./sidebar";
 import { Header } from "./header";
+import { SearchProvider } from "@/hooks/use-search";
 
 interface MainLayoutProps {
   children: React.ReactNode;
@@ -31,14 +32,16 @@ export function MainLayout({
         />
       )}
 
-      <main className="lg:ml-64 min-h-screen flex flex-col">
-        <Header
-          title={title}
-          showDateFilter={showDateFilter}
-          onMenuClick={toggleSidebar}
-        />
-        <div className="flex-1">{children}</div>
-      </main>
+      <SearchProvider>
+        <main className="lg:ml-64 min-h-screen flex flex-col">
+          <Header
+            title={title}
+            showDateFilter={showDateFilter}
+            onMenuClick={toggleSidebar}
+          />
+          <div className="flex-1">{children}</div>
+        </main>
+      </SearchProvider>
     </div>
   );
 }

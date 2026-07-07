@@ -1,8 +1,9 @@
 import { useRef, useState } from "react";
 import { Button } from "@/components/ui/button";
 import { Tabs, TabsList, TabsTrigger, TabsContent } from "@/components/ui/tabs";
-import { Upload, FileText, X, Download } from "lucide-react";
+import { Upload, FileText, X, Download, Lock } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
+import { useAuth } from "@/hooks/use-auth";
 
 const STORAGE_KEY = "dashboard_uploads";
 const MAX_FILES = 3;
@@ -53,8 +54,15 @@ export function FileUploadSection() {
   const [uploading, setUploading] = useState(false);
   const inputRef = useRef<HTMLInputElement>(null);
   const { toast } = useToast();
+  const { user } = useAuth();
+
+  // Rights model: Negative DB data upload is allowed only for the Super Admin
+  // (SUPER_EXECUTIVE) and the Executive (BUSINESS_HEAD) — not analysts.
+  const canUpload =
+    user?.role === "SUPER_EXECUTIVE" || user?.role === "BUSINESS_HEAD";
 
   const handleSelect = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    if (!canUpload) return;
     const selected = Array.from(e.target.files || []);
     e.target.value = "";
     if (selected.length === 0) return;
@@ -130,7 +138,7 @@ export function FileUploadSection() {
           </TabsList>
           <Button
             onClick={() => inputRef.current?.click()}
-            disabled={uploading || files.length >= MAX_FILES}
+            disabled={uploading || files.length >= MAX_FILES || !canUpload}
             size="sm"
             className="h-8 bg-[#46CDCF] hover:bg-[#3db8ba] text-white text-xs font-semibold"
             data-testid="button-upload-file"
@@ -147,6 +155,16 @@ export function FileUploadSection() {
             data-testid="input-file-upload"
           />
         </div>
+
+        {!canUpload && (
+          <div className="mx-4 mt-3 flex items-start gap-2 rounded-lg border border-amber-200 bg-amber-50 p-3 text-xs text-amber-800">
+            <Lock className="mt-0.5 h-3.5 w-3.5 shrink-0" />
+            <span>
+              Only the <strong>Super Admin</strong> and <strong>Executive</strong>{" "}
+              can upload Negative Database data. You have view-only access.
+            </span>
+          </div>
+        )}
 
         <TabsContent value="files" className="mt-0 px-4 pb-3">
           {files.length === 0 ? (
@@ -179,14 +197,16 @@ export function FileUploadSection() {
                     >
                       <Download className="w-3.5 h-3.5" />
                     </a>
-                    <button
-                      onClick={() => remove(f.id)}
-                      className="p-1 text-gray-400 hover:text-red-500 rounded"
-                      title="Remove"
-                      data-testid={`button-remove-${f.id}`}
-                    >
-                      <X className="w-3.5 h-3.5" />
-                    </button>
+                    {canUpload && (
+                      <button
+                        onClick={() => remove(f.id)}
+                        className="p-1 text-gray-400 hover:text-red-500 rounded"
+                        title="Remove"
+                        data-testid={`button-remove-${f.id}`}
+                      >
+                        <X className="w-3.5 h-3.5" />
+                      </button>
+                    )}
                   </div>
                 </li>
               ))}

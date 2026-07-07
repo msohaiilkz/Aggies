@@ -1,4 +1,4 @@
-import { useState, useEffect } from "react";
+import { useState, useEffect, useRef, Fragment } from "react";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { useLocation } from "wouter";
 import { Button } from "@/components/ui/button";
@@ -17,12 +17,28 @@ import {
   ChevronDown,
   ChevronLeft,
   ChevronRight,
+  ArrowRightLeft,
+  AlertTriangle,
+  RotateCcw,
 } from "lucide-react";
 import CustomerDetailsModal from "./CustomerDetailsModal";
 import { DatePickerWithRange } from "@/components/date-range-picker";
 import { UnreviewedAccountsModal } from "@/components/UnreviewedAccountsModal";
 import ForceCloseModal from "@/components/ForceCloseModal";
 import { useToast } from "@/hooks/use-toast";
+import { getAlertOverrides, setAlertOverride } from "@/hooks/use-alert-status";
+import { getReassignments, REASSIGN_EVENT } from "@/hooks/use-reassignments";
+import { useSearch } from "@/hooks/use-search";
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+} from "@/components/ui/alert-dialog";
 
 // Mock data for demonstration
 
@@ -196,15 +212,103 @@ const initialAlerts = [
   },
 ];
 
-export default function FraudDashboard({ category }: { category?: string }) {
+const ANALYSTS = [
+  "Ahmed Raza",
+  "Sana Iqbal",
+  "Bilal Khan",
+  "Hina Malik",
+  "Usman Tariq",
+];
+// Demo: a couple of analysts are currently offline.
+const OFFLINE_ANALYSTS = new Set(["Bilal Khan", "Usman Tariq"]);
+const isAnalystOnline = (name?: string) =>
+  !!name && !OFFLINE_ANALYSTS.has(name);
+
+export default function FraudDashboard({
+  category,
+  isExecutive = false,
+}: {
+  category?: string;
+  isExecutive?: boolean;
+}) {
   const { toast } = useToast();
-  const [alerts, setAlerts] = useState(() =>
-    initialAlerts.map((alert) => ({
-      ...alert,
-      movedToPendingAt: null as number | null,
-      lastNotifiedAt: 0,
-    })),
-  );
+  const { query: globalQuery, setPlaceholder } = useSearch();
+
+  useEffect(() => {
+    setPlaceholder("Search alerts (customer, CIF, alert source)...");
+  }, [setPlaceholder]);
+
+  const [alerts, setAlerts] = useState(() => {
+    const overrides = getAlertOverrides();
+    return initialAlerts.map((alert, i) => {
+      const base = {
+        ...alert,
+        analyst: ANALYSTS[i % ANALYSTS.length],
+        movedToPendingAt: null as number | null,
+        lastNotifiedAt: 0,
+      };
+      const ov = overrides[alert.id];
+      return ov ? { ...base, ...ov } : base;
+    });
+  });
+
+  // Keep this view in sync with actions taken elsewhere (e.g. an analyst
+  // discarding an alert should show up in the executive's view).
+  useEffect(() => {
+    const sync = () => {
+      const overrides = getAlertOverrides();
+      setAlerts((prev) =>
+        prev.map((a) => {
+          const ov = overrides[a.id];
+          return ov ? { ...a, ...ov } : a;
+        }),
+      );
+    };
+    window.addEventListener("alert-status-change", sync);
+    window.addEventListener("storage", sync);
+    return () => {
+      window.removeEventListener("alert-status-change", sync);
+      window.removeEventListener("storage", sync);
+    };
+  }, []);
+
+  // Reassignment notifications: when an executive reassigns an alert away from
+  // an analyst, the analyst sees it disabled + a popup — WITHOUT the executive's
+  // name. (Executives don't get these popups.)
+  const reassignSeen = useRef<Set<string>>(new Set());
+  const [reassignedCustomers, setReassignedCustomers] = useState<string[]>([]);
+
+  useEffect(() => {
+    if (isExecutive) return;
+    const applyAndNotify = (initial: boolean) => {
+      const list = getReassignments();
+      setReassignedCustomers(list.map((r) => r.customerName));
+      const fresh = list.filter((r) => !reassignSeen.current.has(r.id));
+      fresh.forEach((r) => reassignSeen.current.add(r.id));
+      if (fresh.length === 0) return;
+      if (initial) {
+        toast({
+          title: "🔔 Alerts Reassigned",
+          description: `${fresh.length} alert(s) have been reassigned away from you and disabled.`,
+        });
+      } else {
+        fresh.forEach((r) =>
+          toast({
+            title: "🔔 Alert Reassigned",
+            description: `${r.customerName}'s alert has been reassigned to ${r.toAnalyst} and removed from your active queue.`,
+          }),
+        );
+      }
+    };
+    applyAndNotify(true);
+    const onChange = () => applyAndNotify(false);
+    window.addEventListener(REASSIGN_EVENT, onChange);
+    window.addEventListener("storage", onChange);
+    return () => {
+      window.removeEventListener(REASSIGN_EVENT, onChange);
+      window.removeEventListener("storage", onChange);
+    };
+  }, [isExecutive, toast]);
 
   const normalizeAlertRuleKey = (alertSource: string) => {
     const matchedRule = alertSource.match(/Rule\s*#\s*(\d+)/i);
@@ -249,6 +353,25 @@ export default function FraudDashboard({ category }: { category?: string }) {
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [unreviewedModalOpen, setUnreviewedModalOpen] = useState(false);
   const [isForceCloseModalOpen, setIsForceCloseModalOpen] = useState(false);
+  const GROUP_PAGE_SIZE = 5;
+  const [reopenTargetId, setReopenTargetId] = useState<string | null>(null);
+  const [expandedGroups, setExpandedGroups] = useState<string[]>([]);
+  const [groupVisible, setGroupVisible] = useState<Record<string, number>>({});
+
+  const toggleGroup = (key: string) => {
+    setExpandedGroups((prev) =>
+      prev.includes(key) ? prev.filter((k) => k !== key) : [...prev, key],
+    );
+    // Reset the visible window to the first page whenever a group is opened.
+    setGroupVisible((prev) => ({ ...prev, [key]: GROUP_PAGE_SIZE }));
+  };
+
+  const showMoreInGroup = (key: string) => {
+    setGroupVisible((prev) => ({
+      ...prev,
+      [key]: (prev[key] || GROUP_PAGE_SIZE) + GROUP_PAGE_SIZE,
+    }));
+  };
 
   // Frontend Notification Logic - FIXED
   useEffect(() => {
@@ -331,6 +454,17 @@ export default function FraudDashboard({ category }: { category?: string }) {
   };
 
   const handleAlertAction = (alertId: string, action: string, data?: any) => {
+    // Map the action to the resulting status and persist it to the shared
+    // store so other views (analyst ⇄ executive) stay in sync.
+    const statusMap: Record<string, string> = {
+      NOT_CONTACTED: "NOT_CONTACTED",
+      CONTACTED: "RESOLVED",
+      FRAUD: "FRAUD",
+      OPEN: "OPEN",
+      DISCARDED: "DISCARDED",
+    };
+    const newStatus = statusMap[action];
+
     setAlerts((prev) =>
       prev.map((alert) => {
         if (alert.id === alertId) {
@@ -342,46 +476,53 @@ export default function FraudDashboard({ category }: { category?: string }) {
               lastNotifiedAt: 0,
             };
           }
-          if (action === "CONTACTED") {
-            return { ...alert, status: "RESOLVED", movedToPendingAt: null };
-          }
-          if (action === "FRAUD") {
-            return { ...alert, status: "FRAUD", movedToPendingAt: null };
-          }
-          if (action === "OPEN") {
-            return { ...alert, status: "OPEN", movedToPendingAt: null };
-          }
-          if (action === "DISCARDED") {
-            return { ...alert, status: "DISCARDED", movedToPendingAt: null };
+          if (newStatus) {
+            return { ...alert, status: newStatus, movedToPendingAt: null };
           }
         }
         return alert;
       }),
     );
+
+    if (newStatus) setAlertOverride(alertId, { status: newStatus });
   };
 
   const filteredAlerts = alerts.filter((alert) => {
-    if (statusFilter === "CLOSED_ALERTS") {
-      if (alert.status !== "FRAUD" && alert.status !== "DISCARDED")
+    // Executives monitor everything: active + closed + fraud + discarded, so
+    // they can see what each analyst is working on and what was actioned.
+    if (!isExecutive) {
+      if (statusFilter === "CLOSED_ALERTS") {
+        if (alert.status !== "FRAUD" && alert.status !== "DISCARDED")
+          return false;
+      } else if (statusFilter && alert.status !== statusFilter) {
         return false;
-    } else if (statusFilter && alert.status !== statusFilter) {
-      return false;
-    }
+      }
 
-    // Normal view: hide resolved, fraud, discarded, not_contacted
-    if (
-      !statusFilter &&
-      (alert.status === "RESOLVED" ||
-        alert.status === "FRAUD" ||
-        alert.status === "DISCARDED" ||
-        alert.status === "NOT_CONTACTED")
-    )
-      return false;
+      // Normal view: hide resolved, fraud, discarded, not_contacted
+      if (
+        !statusFilter &&
+        (alert.status === "RESOLVED" ||
+          alert.status === "FRAUD" ||
+          alert.status === "DISCARDED" ||
+          alert.status === "NOT_CONTACTED")
+      )
+        return false;
+    }
 
     const matchesSearch =
       !searchQuery ||
       alert.globalId.toLowerCase().includes(searchQuery.toLowerCase()) ||
       alert.customerName.toLowerCase().includes(searchQuery.toLowerCase());
+
+    // Top-bar (page-scoped) search — filters this page's alerts.
+    const gq = globalQuery.trim().toLowerCase();
+    const matchesGlobal =
+      !gq ||
+      alert.globalId.toLowerCase().includes(gq) ||
+      alert.customerName.toLowerCase().includes(gq) ||
+      alert.idType.toLowerCase().includes(gq) ||
+      alert.alertSource.toLowerCase().includes(gq) ||
+      (alert as any).analyst?.toLowerCase().includes(gq);
 
     const matchesCity =
       cityFilter === "all" ||
@@ -398,7 +539,13 @@ export default function FraudDashboard({ category }: { category?: string }) {
     const matchesChannel =
       selectedChannel === "All" || alert.channel === selectedChannel;
 
-    return matchesChannel && matchesSearch && matchesCity && matchesAmount;
+    return (
+      matchesChannel &&
+      matchesSearch &&
+      matchesGlobal &&
+      matchesCity &&
+      matchesAmount
+    );
   });
 
   const toggleSelectAlert = (alertId: string) => {
@@ -450,6 +597,223 @@ export default function FraudDashboard({ category }: { category?: string }) {
     setSelectedAlerts([]);
     setIsForceCloseModalOpen(false);
   };
+
+  // Any customer whose Alert Count is greater than 1 becomes an expandable
+  // row. The extra alerts (alertCount - 1) are shown in the dropdown, 5 at a
+  // time. In this demo they are derived from the primary alert.
+  const CHILD_SOURCES = [
+    "Rule #105 (High Velocity)",
+    "AI Model (Unusual Location)",
+    "Rule #302 (Structuring)",
+    "Rule #404 (Large Transaction)",
+    "AI Model (Device Mismatch)",
+    "AI Model (Behavioral Anomaly)",
+  ];
+
+  const buildChildAlerts = (alert: (typeof filteredAlerts)[number]) => {
+    const childCount = Math.max(0, (alert.alertCount || 1) - 1);
+    const base = new Date(alert.createdAt);
+    return Array.from({ length: childCount }, (_, i) => {
+      const d = new Date(base);
+      d.setDate(base.getDate() - (i + 1));
+      return {
+        ...alert,
+        id: `${alert.id}-sub-${i + 1}`,
+        _modalId: alert.id,
+        alertSource: CHILD_SOURCES[(i + 1) % CHILD_SOURCES.length],
+        createdAt: d.toISOString(),
+        alertCount: 1,
+      };
+    });
+  };
+
+  const renderAlertRow = (
+    alert: (typeof filteredAlerts)[number],
+    isChild = false,
+    group?: { key: string; children: any[] },
+    displayNumber?: number,
+  ) => {
+    const extraCount = group ? group.children.length : 0;
+    const isExpanded = group ? expandedGroups.includes(group.key) : false;
+    // Reassigned-away alerts are disabled for the analyst.
+    const isReassigned =
+      !isExecutive && reassignedCustomers.includes(alert.customerName);
+    return (
+      <tr
+        key={alert.id}
+        onClick={
+          isReassigned
+            ? undefined
+            : () => openModal((alert as any)._modalId ?? alert.id)
+        }
+        className={`border-b transition-colors ${
+          isReassigned
+            ? "bg-gray-50 opacity-50 cursor-not-allowed"
+            : `cursor-pointer ${
+                isChild
+                  ? "bg-slate-50/70 hover:bg-slate-100"
+                  : "bg-white hover:bg-gray-50"
+              }`
+        }`}
+      >
+        <td className={`p-4 ${isChild ? "border-l-4 border-blue-300" : ""}`}>
+          <input
+            type="checkbox"
+            checked={selectedAlerts.includes(alert.id)}
+            onChange={() => toggleSelectAlert(alert.id)}
+            onClick={(e) => e.stopPropagation()}
+            disabled={isReassigned}
+            className="rounded border-gray-300 text-blue-600 focus:ring-blue-500"
+            aria-label={`Select alert ${alert.id}`}
+          />
+        </td>
+        <td className="p-4 text-sm font-mono font-bold text-blue-600 hover:text-blue-800">
+          <span className={isChild ? "pl-4 inline-block" : ""}>
+            {buildAlertId(alert, displayNumber ?? 1)}
+          </span>
+        </td>
+        <td className="p-4 font-medium text-gray-900">{alert.customerName}</td>
+        <td className="p-4">
+          <div className="space-y-1">
+            <div className="font-mono font-bold text-sm text-gray-900">
+              {alert.globalId}
+            </div>
+            <div className="text-xs text-blue-600 font-medium">
+              ID Type: {alert.idType}
+            </div>
+          </div>
+        </td>
+        <td className="p-4 text-sm text-gray-700">{alert.alertSource}</td>
+        <td className="p-4 text-center">
+          {isReassigned ? (
+            <Badge className="bg-purple-500 text-white hover:bg-purple-600 border-0 rounded-full text-xs px-3 py-1">
+              Reassigned
+            </Badge>
+          ) : alert.status === "FRAUD" ? (
+            <Badge className="bg-red-500 text-white hover:bg-red-600 border-0 rounded-full text-xs px-3 py-1">
+              Fraud
+            </Badge>
+          ) : alert.status === "DISCARDED" ? (
+            <Badge className="bg-gray-500 text-white hover:bg-gray-600 border-0 rounded-full text-xs px-3 py-1">
+              Discarded
+            </Badge>
+          ) : alert.status === "RESOLVED" ? (
+            <Badge className="bg-green-500 text-white hover:bg-green-600 border-0 rounded-full text-xs px-3 py-1">
+              Resolved
+            </Badge>
+          ) : (
+            <Badge className="bg-slate-200 text-slate-700 hover:bg-slate-300 border-0 rounded-full text-xs px-3 py-1">
+              Open
+            </Badge>
+          )}
+        </td>
+        <td className="p-4 text-center font-medium text-gray-900">
+          {extraCount > 0 ? group!.children.length + 1 : alert.alertCount}
+        </td>
+        <td className="p-4 text-right">
+          {extraCount > 0 ? (
+            <button
+              type="button"
+              onClick={(e) => {
+                e.stopPropagation();
+                toggleGroup(group!.key);
+              }}
+              className="inline-flex items-center gap-1 whitespace-nowrap rounded-lg border border-blue-100 bg-blue-50 px-3 py-1.5 text-xs font-semibold text-blue-600 transition-colors hover:bg-blue-100"
+            >
+              {isExpanded ? "Show less" : "Show more"}
+              <ChevronDown
+                className={`h-3.5 w-3.5 transition-transform ${
+                  isExpanded ? "rotate-180" : ""
+                }`}
+              />
+            </button>
+          ) : (
+            <Button
+              variant="ghost"
+              size="sm"
+              onClick={(e) => e.stopPropagation()}
+              className="h-8 w-8 p-0 text-gray-400 hover:text-gray-600 hover:bg-gray-100"
+            >
+              <span className="text-lg font-bold">⋮</span>
+            </Button>
+          )}
+        </td>
+      </tr>
+    );
+  };
+
+  // ---- Executive (monitoring) view helpers ----
+  const ruleLabel = (alertSource: string) => {
+    const m = alertSource.match(/Rule\s*#?\s*(\d+)/i);
+    return m ? `Rule ${m[1]}` : "AI Model";
+  };
+
+  const formatDateTime = (iso: string) => {
+    const d = new Date(iso);
+    return d
+      .toLocaleString("en-US", {
+        day: "2-digit",
+        month: "short",
+        hour: "2-digit",
+        minute: "2-digit",
+        hour12: true,
+      })
+      .replace(",", ",");
+  };
+
+  const statusBadge = (status: string) => {
+    if (status === "FRAUD")
+      return (
+        <Badge className="bg-red-500 text-white hover:bg-red-600 border-0 rounded-full text-xs px-3 py-1">
+          Fraud
+        </Badge>
+      );
+    if (status === "DISCARDED")
+      return (
+        <Badge className="bg-gray-500 text-white hover:bg-gray-600 border-0 rounded-full text-xs px-3 py-1">
+          Discarded
+        </Badge>
+      );
+    if (status === "RESOLVED")
+      return (
+        <Badge className="bg-green-500 text-white hover:bg-green-600 border-0 rounded-full text-xs px-3 py-1">
+          Resolved
+        </Badge>
+      );
+    if (status === "NOT_CONTACTED")
+      return (
+        <Badge className="bg-amber-500 text-white hover:bg-amber-600 border-0 rounded-full text-xs px-3 py-1">
+          Pending Contact
+        </Badge>
+      );
+    return (
+      <Badge className="bg-slate-200 text-slate-700 hover:bg-slate-300 border-0 rounded-full text-xs px-3 py-1">
+        Open
+      </Badge>
+    );
+  };
+
+  const handleReassignAnalyst = (alertId: string, name: string) => {
+    setAlerts((prev) =>
+      prev.map((a) => (a.id === alertId ? { ...a, analyst: name } : a)),
+    );
+    setAlertOverride(alertId, { analyst: name });
+    toast({
+      title: "Alert reassigned",
+      description: `Alert has been reassigned to ${name}.`,
+    });
+  };
+
+  const handleReopenAlert = (alertId: string) => {
+    handleAlertAction(alertId, "OPEN");
+    toast({
+      title: "Alert reopened",
+      description: "The alert has been reopened and is active again.",
+    });
+  };
+
+  const isClosedStatus = (status: string) =>
+    status === "FRAUD" || status === "DISCARDED" || status === "RESOLVED";
 
   // Calculate stats from filtered data
   const stats = {
@@ -701,7 +1065,211 @@ export default function FraudDashboard({ category }: { category?: string }) {
             )}
           </div>
 
+          {/* Executive monitoring table */}
+          {isExecutive && (
+            <div className="overflow-x-auto border rounded-xl shadow-sm">
+              <table className="w-full min-w-[1120px] bg-white">
+                <thead>
+                  <tr className="bg-gray-50 border-b">
+                    <th className="w-12 p-4 text-left">
+                      <input
+                        type="checkbox"
+                        checked={
+                          selectedAlerts.length === filteredAlerts.length &&
+                          filteredAlerts.length > 0
+                        }
+                        onChange={toggleSelectAll}
+                        aria-label="Select all alerts"
+                        className="rounded border-gray-300 text-blue-600 focus:ring-blue-500"
+                      />
+                    </th>
+                    <th className="p-4 text-left font-medium text-gray-900 text-sm">
+                      Alert ID
+                    </th>
+                    <th className="p-4 text-left font-medium text-gray-900 text-sm">
+                      Customer
+                    </th>
+                    <th className="p-4 text-left font-medium text-gray-900 text-sm">
+                      <div className="flex items-center">
+                        Customer # / CIF
+                        <ChevronDown className="ml-1 h-4 w-4 text-gray-400" />
+                      </div>
+                    </th>
+                    <th className="p-4 text-left font-medium text-gray-900 text-sm">
+                      Rule
+                    </th>
+                    <th className="p-4 text-left font-medium text-gray-900 text-sm">
+                      Alert Source
+                    </th>
+                    <th className="p-4 text-left font-medium text-gray-900 text-sm">
+                      Assigned To
+                    </th>
+                    <th className="p-4 text-left font-medium text-gray-900 text-sm">
+                      Date / Time
+                    </th>
+                    <th className="p-4 text-center font-medium text-gray-900 text-sm">
+                      Status
+                    </th>
+                    <th className="p-4 text-right font-medium text-gray-900 text-sm">
+                      Reassign / Reopen
+                    </th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {filteredAlerts.length === 0 ? (
+                    <tr>
+                      <td
+                        colSpan={10}
+                        className="p-8 text-center text-gray-500"
+                      >
+                        No alerts found matching your criteria
+                      </td>
+                    </tr>
+                  ) : (
+                    filteredAlerts.map((alert, index) => {
+                      const online = isAnalystOnline((alert as any).analyst);
+                      const closed = isClosedStatus(alert.status);
+                      return (
+                        <tr
+                          key={alert.id}
+                          className="border-b bg-white align-top hover:bg-gray-50 transition-colors"
+                        >
+                          <td className="p-4">
+                            <input
+                              type="checkbox"
+                              checked={selectedAlerts.includes(alert.id)}
+                              onChange={() => toggleSelectAlert(alert.id)}
+                              aria-label={`Select alert ${alert.id}`}
+                              className="rounded border-gray-300 text-blue-600 focus:ring-blue-500"
+                            />
+                          </td>
+                          <td
+                            onClick={() => openModal(alert.id)}
+                            className="p-4 text-sm font-mono font-bold text-blue-600 hover:text-blue-800 cursor-pointer whitespace-nowrap"
+                          >
+                            {buildAlertId(alert, index + 1)}
+                          </td>
+                          <td className="p-4 text-sm font-medium text-gray-900 whitespace-nowrap">
+                            {alert.customerName}
+                          </td>
+                          <td className="p-4">
+                            <div className="font-mono font-bold text-sm text-gray-900">
+                              {alert.globalId}
+                            </div>
+                            <div className="text-xs text-blue-600 font-medium">
+                              ID Type: {alert.idType}
+                            </div>
+                          </td>
+                          <td className="p-4 text-sm font-semibold text-gray-700 whitespace-nowrap">
+                            {ruleLabel(alert.alertSource)}
+                          </td>
+                          <td className="p-4">
+                            <span className="inline-block rounded border border-blue-100 bg-blue-50 px-2 py-1 text-xs font-medium text-blue-700">
+                              {alert.alertSource}
+                            </span>
+                          </td>
+                          <td className="p-4">
+                            <div className="flex items-center gap-2">
+                              <div className="flex h-8 w-8 items-center justify-center rounded-full bg-blue-100 text-[11px] font-bold text-blue-700">
+                                {((alert as any).analyst || "?")
+                                  .split(" ")
+                                  .map((w: string) => w[0])
+                                  .join("")
+                                  .slice(0, 2)}
+                              </div>
+                              <div className="min-w-0">
+                                <div className="text-sm font-medium text-gray-900 whitespace-nowrap">
+                                  {(alert as any).analyst || "—"}
+                                </div>
+                                <div
+                                  className={`flex items-center gap-1 text-[11px] font-medium ${
+                                    online ? "text-green-600" : "text-gray-400"
+                                  }`}
+                                >
+                                  <span
+                                    className={`h-1.5 w-1.5 rounded-full ${
+                                      online ? "bg-green-500" : "bg-gray-400"
+                                    }`}
+                                  />
+                                  {online ? "Online" : "Offline"}
+                                </div>
+                              </div>
+                            </div>
+                          </td>
+                          <td className="p-4 text-sm text-gray-600 whitespace-nowrap">
+                            {formatDateTime(alert.createdAt)}
+                          </td>
+                          <td className="p-4 text-center">
+                            {statusBadge(alert.status)}
+                          </td>
+                          <td className="p-4">
+                            <div className="flex min-w-[250px] flex-col gap-2 rounded-lg border border-gray-100 bg-gray-50/60 p-2.5">
+                              <div className="flex items-center gap-1.5">
+                                <span className="rounded bg-white px-2 py-1 text-[11px] font-semibold text-gray-600 ring-1 ring-gray-200 whitespace-nowrap">
+                                  {(alert as any).analyst}
+                                </span>
+                                <ArrowRightLeft className="h-3.5 w-3.5 shrink-0 text-[#46CDCF]" />
+                                <Select
+                                  value={(alert as any).analyst}
+                                  onValueChange={(v) =>
+                                    handleReassignAnalyst(alert.id, v)
+                                  }
+                                >
+                                  <SelectTrigger className="h-8 flex-1 bg-white text-xs">
+                                    <SelectValue />
+                                  </SelectTrigger>
+                                  <SelectContent>
+                                    {ANALYSTS.map((name) => (
+                                      <SelectItem key={name} value={name}>
+                                        {name}
+                                        {name === (alert as any).analyst
+                                          ? " (current)"
+                                          : ""}
+                                        {!isAnalystOnline(name)
+                                          ? " — offline"
+                                          : ""}
+                                      </SelectItem>
+                                    ))}
+                                  </SelectContent>
+                                </Select>
+                              </div>
+
+                              {closed && (
+                                <>
+                                  {!online && (
+                                    <div className="flex items-start gap-1.5 rounded-md bg-amber-50 px-2 py-1.5 text-[11px] leading-snug text-amber-700">
+                                      <AlertTriangle className="mt-0.5 h-3.5 w-3.5 shrink-0" />
+                                      <span>
+                                        Current owner is offline. The reopened
+                                        alert will remain assigned and become
+                                        actionable when the analyst returns
+                                        online.
+                                      </span>
+                                    </div>
+                                  )}
+                                  <Button
+                                    size="sm"
+                                    onClick={() => setReopenTargetId(alert.id)}
+                                    className="h-8 w-full gap-1.5 bg-blue-600 text-xs font-semibold text-white hover:bg-blue-700"
+                                  >
+                                    <RotateCcw className="h-3.5 w-3.5" />
+                                    Reopen Alert
+                                  </Button>
+                                </>
+                              )}
+                            </div>
+                          </td>
+                        </tr>
+                      );
+                    })
+                  )}
+                </tbody>
+              </table>
+            </div>
+          )}
+
           {/* Alerts Table */}
+          {!isExecutive && (
           <div className="overflow-x-auto border rounded-xl shadow-sm">
             <table className="w-full min-w-[700px] bg-white">
               <thead>
@@ -727,16 +1295,10 @@ export default function FraudDashboard({ category }: { category?: string }) {
                     Customer Name
                   </th>
                   <th className="p-4 text-left font-medium text-gray-900 text-sm">
-                    <div className="flex items-center">
-                      CIF Number
-                      <ChevronDown className="ml-1 h-4 w-4 text-gray-400" />
-                    </div>
+                    CIF Number
                   </th>
                   <th className="p-4 text-left font-medium text-gray-900 text-sm">
                     Alert Source
-                  </th>
-                  <th className="p-4 text-left font-medium text-gray-900 text-sm">
-                    Alert Count
                   </th>
                   {/* <th className="p-4 text-left font-medium text-gray-900 text-sm">
                     Alert Amount
@@ -747,10 +1309,15 @@ export default function FraudDashboard({ category }: { category?: string }) {
                   <th className="p-4 font-medium text-gray-900 text-sm text-center">
                     Status
                   </th>
+                  <th className="p-4 font-medium text-gray-900 text-sm text-center">
+                    Alert Count
+                  </th>
                   {/* <th className="p-4 font-medium text-gray-900 text-sm text-center">
                     Channel
                   </th> */}
-                  <th className="w-12 p-4"></th>
+                  <th className="p-4 font-medium text-gray-900 text-sm text-right">
+                    <span className="sr-only">Actions</span>
+                  </th>
                 </tr>
               </thead>
               <tbody>
@@ -761,105 +1328,60 @@ export default function FraudDashboard({ category }: { category?: string }) {
                     </td>
                   </tr>
                 ) : (
-                  filteredAlerts.map((alert, index) => (
-                    <tr
-                      key={alert.id}
-                      onClick={() => openModal(alert.id)}
-                      className="border-b bg-white hover:bg-gray-50 transition-colors cursor-pointer"
-                    >
-                      <td className="p-4">
-                        <input
-                          type="checkbox"
-                          checked={selectedAlerts.includes(alert.id)}
-                          onChange={() => toggleSelectAlert(alert.id)}
-                          onClick={(e) => e.stopPropagation()}
-                          className="rounded border-gray-300 text-blue-600 focus:ring-blue-500"
-                        />
-                      </td>
-                      {/* <td className="p-4 text-sm text-gray-500 font-medium">
-                        {index + 1}
-                      </td> */}
-                      <td 
-                        className="p-4 text-sm font-mono font-bold text-blue-600 hover:text-blue-800"
-                      >
-                        {buildAlertId(alert, index + 1)}
-                      </td>
-                      <td className="p-4 font-medium text-gray-900">
-                        {alert.customerName}
-                      </td>
-                      <td className="p-4">
-                        <div className="space-y-1">
-                          <div className="font-mono font-bold text-sm text-gray-900">
-                            {alert.globalId}
-                          </div>
-                          <div className="text-xs text-blue-600 font-medium">
-                            ID Type: {alert.idType}
-                          </div>
-                        </div>
-                      </td>
-                      <td className="p-4 text-sm text-gray-700">
-                        {alert.alertSource}
-                      </td>
-                      <td className="p-4 text-center font-medium text-gray-900">
-                        {alert.alertCount}
-                      </td>
-                      {/* <td className="p-4 font-semibold text-gray-900">
-                        PKR{" "}
-                        {alert.amount.toLocaleString(undefined, {
-                          minimumFractionDigits: 2,
-                        })}
-                      </td>
-                      <td className="p-4">
-                        <Badge
-                          className={`${getSeverityColor(alert.severity)} text-xs px-3 py-1 rounded-full font-medium border-0`}
-                        >
-                          {alert.severity === "HIGH"
-                            ? "High"
-                            : alert.severity === "MEDIUM"
-                              ? "Medium"
-                              : "Low"}
-                        </Badge>
-                      </td> */}
-                      <td className="p-4 text-center">
-                        {alert.status === "FRAUD" ? (
-                          <Badge className="bg-red-500 text-white hover:bg-red-600 border-0 rounded-full text-xs px-3 py-1">
-                            Fraud
-                          </Badge>
-                        ) : alert.status === "DISCARDED" ? (
-                          <Badge className="bg-gray-500 text-white hover:bg-gray-600 border-0 rounded-full text-xs px-3 py-1">
-                            Discarded
-                          </Badge>
-                        ) : alert.status === "RESOLVED" ? (
-                          <Badge className="bg-green-500 text-white hover:bg-green-600 border-0 rounded-full text-xs px-3 py-1">
-                            Resolved
-                          </Badge>
-                        ) : (
-                          <Badge className="bg-slate-200 text-slate-700 hover:bg-slate-300 border-0 rounded-full text-xs px-3 py-1">
-                            Open
-                          </Badge>
+                  filteredAlerts.map((alert, index) => {
+                    const hasChildren = (alert.alertCount || 1) > 1;
+                    const children = hasChildren ? buildChildAlerts(alert) : [];
+                    const group = hasChildren
+                      ? { key: alert.id, children }
+                      : undefined;
+                    const isExpanded =
+                      hasChildren && expandedGroups.includes(alert.id);
+                    const visible = groupVisible[alert.id] || GROUP_PAGE_SIZE;
+                    const shownChildren = isExpanded
+                      ? children.slice(0, visible)
+                      : [];
+                    const remaining = children.length - shownChildren.length;
+                    const baseNo = index + 1;
+                    return (
+                      <Fragment key={alert.id}>
+                        {renderAlertRow(alert, false, group, baseNo)}
+
+                        {isExpanded &&
+                          shownChildren.map((child, i) =>
+                            renderAlertRow(
+                              child,
+                              true,
+                              undefined,
+                              baseNo * 100 + i + 1,
+                            ),
+                          )}
+
+                        {isExpanded && remaining > 0 && (
+                          <tr className="border-b bg-slate-50/70">
+                            <td className="border-l-4 border-blue-300 p-0" />
+                            <td colSpan={7} className="px-4 py-3">
+                              <button
+                                type="button"
+                                onClick={() => showMoreInGroup(alert.id)}
+                                className="inline-flex items-center gap-2 text-sm font-semibold text-blue-600 transition-colors hover:text-blue-800"
+                              >
+                                <ChevronDown className="h-4 w-4" />
+                                Show {Math.min(GROUP_PAGE_SIZE, remaining)} more
+                                {remaining > GROUP_PAGE_SIZE
+                                  ? ` (${remaining} remaining)`
+                                  : ""}
+                              </button>
+                            </td>
+                          </tr>
                         )}
-                      </td>
-                      {/* <td className="p-4 text-center">
-                        <span className="text-[11px] font-bold px-2 py-0.5 bg-blue-50 text-blue-700 rounded border border-blue-100 uppercase tracking-tighter">
-                          {alert.channel}
-                        </span>
-                      </td> */}
-                      <td className="p-4">
-                        <Button
-                          variant="ghost"
-                          size="sm"
-                          onClick={(e) => e.stopPropagation()}
-                          className="h-8 w-8 p-0 text-gray-400 hover:text-gray-600 hover:bg-gray-100"
-                        >
-                          <span className="text-lg font-bold">⋮</span>
-                        </Button>
-                      </td>
-                    </tr>
-                  ))
+                      </Fragment>
+                    );
+                  })
                 )}
               </tbody>
             </table>
           </div>
+          )}
 
           {/* Pagination */}
           {filteredAlerts.length > 0 && (
@@ -939,6 +1461,40 @@ export default function FraudDashboard({ category }: { category?: string }) {
         onSubmit={handleForceCloseSubmit}
         selectedCount={selectedAlerts.length}
       />
+
+      {/* Reopen confirmation */}
+      <AlertDialog
+        open={reopenTargetId !== null}
+        onOpenChange={(open) => {
+          if (!open) setReopenTargetId(null);
+        }}
+      >
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>Reopen this alert?</AlertDialogTitle>
+            <AlertDialogDescription>
+              {(() => {
+                const target = alerts.find((a) => a.id === reopenTargetId);
+                return target
+                  ? `This will move ${target.customerName}'s alert back to an active (Open) state. Are you sure you want to reopen it?`
+                  : "This will move the alert back to an active (Open) state.";
+              })()}
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel>Cancel</AlertDialogCancel>
+            <AlertDialogAction
+              className="bg-blue-600 hover:bg-blue-700"
+              onClick={() => {
+                if (reopenTargetId) handleReopenAlert(reopenTargetId);
+                setReopenTargetId(null);
+              }}
+            >
+              Confirm Reopen
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
     </div>
   );
 }

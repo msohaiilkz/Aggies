@@ -10,6 +10,9 @@ export default function HomePage({
 }) {
   const { user } = useAuth();
 
+  const isExecutive =
+    user?.role === "BUSINESS_HEAD" || user?.role === "SUPER_EXECUTIVE";
+
   const getPageTitle = () => {
     if (params?.category === "Closed-Alerts") {
       return "Closed & Fraud Alerts";
@@ -22,11 +25,13 @@ export default function HomePage({
 
   return (
     <MainLayout title={getPageTitle()}>
-      {(user?.role === "BUSINESS_HEAD" || user?.role === "SUPER_EXECUTIVE") &&
-      params?.category !== "Closed-Alerts" ? (
+      {isExecutive && params?.category !== "Closed-Alerts" ? (
         <BusinessDashboard />
       ) : (
-        <AnalystDashboard category={params?.category} />
+        <AnalystDashboard
+          category={params?.category}
+          isExecutive={isExecutive}
+        />
       )}
     </MainLayout>
   );

@@ -16,7 +16,9 @@ import {
 } from "@/components/ui/select";
 import { useToast } from "@/hooks/use-toast";
 import { UserCog, Loader2, Clock, CheckCircle2, XCircle } from "lucide-react";
-import { updateAnalyst, removeAnalyst, type Analyst } from "@/hooks/use-analysts";
+import { type Analyst } from "@/hooks/use-analysts";
+import { addRequest } from "@/hooks/use-analyst-requests";
+import { useAuth } from "@/hooks/use-auth";
 
 export function ManageAnalystModal({
   isOpen,
@@ -30,6 +32,7 @@ export function ManageAnalystModal({
   onUpdate: () => void;
 }) {
   const { toast } = useToast();
+  const { user } = useAuth();
   const [isLoading, setIsLoading] = useState(false);
   const [formData, setFormData] = useState({ role: "", status: "" });
 
@@ -45,14 +48,19 @@ export function ManageAnalystModal({
     setIsLoading(true);
 
     setTimeout(() => {
-      updateAnalyst(analyst.id, {
-        role: formData.role,
-        status: formData.status as Analyst["status"],
+      // Executive can only REQUEST a role/status change — Super Admin approves.
+      addRequest({
+        type: "ROLE_UPDATE",
+        requestedBy: user?.email || "executive",
+        analystId: analyst.id,
+        analystName: analyst.name,
+        newRole: formData.role,
+        newStatus: formData.status as Analyst["status"],
       });
       setIsLoading(false);
       toast({
-        title: "Analyst Updated",
-        description: `${analyst.name}'s profile has been updated.`,
+        title: "Request Sent for Approval",
+        description: `Role/status change for ${analyst.name} has been sent to the Super Admin for approval.`,
       });
       onUpdate();
       onClose();
@@ -61,11 +69,16 @@ export function ManageAnalystModal({
 
   const handleRemove = () => {
     if (!analyst) return;
-    removeAnalyst(analyst.id);
+    // Executive can only REQUEST removal — Super Admin approves.
+    addRequest({
+      type: "REMOVE",
+      requestedBy: user?.email || "executive",
+      analystId: analyst.id,
+      analystName: analyst.name,
+    });
     toast({
-      title: "Analyst Removed",
-      description: `${analyst.name} has been removed from the platform.`,
-      variant: "destructive",
+      title: "Removal Request Sent",
+      description: `Request to remove ${analyst.name} has been sent to the Super Admin for approval.`,
     });
     onUpdate();
     onClose();
@@ -101,6 +114,15 @@ export function ManageAnalystModal({
           <div className="flex items-center gap-1.5 text-xs font-medium text-gray-600">
             {statusIcon}
             {analyst.status}
+          </div>
+        </div>
+
+        <div className="bg-amber-50 p-3 rounded-lg flex items-start gap-3 border border-amber-200">
+          <Clock className="w-4 h-4 text-amber-600 mt-0.5 shrink-0" />
+          <div className="text-xs text-amber-800 leading-relaxed">
+            <strong>Approval Required:</strong> Changes and removals are{" "}
+            <strong>requests</strong> only. A Super Admin must approve them
+            before they take effect.
           </div>
         </div>
 
@@ -147,7 +169,7 @@ export function ManageAnalystModal({
               onClick={handleRemove}
               disabled={isLoading}
             >
-              Remove User
+              Request Removal
             </Button>
             <div className="flex gap-2">
               <Button
@@ -166,10 +188,10 @@ export function ManageAnalystModal({
                 {isLoading ? (
                   <>
                     <Loader2 className="mr-2 h-4 w-4 animate-spin" />
-                    Saving...
+                    Sending...
                   </>
                 ) : (
-                  "Save Changes"
+                  "Request Change"
                 )}
               </Button>
             </div>

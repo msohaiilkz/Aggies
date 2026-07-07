@@ -25,6 +25,7 @@ import DownloadInsightsModal from "@/components/DownloadInsightsModal";
 import { Wallet } from "lucide-react";
 import { UnreviewedAccountsModal } from "@/components/UnreviewedAccountsModal";
 import { NotContactedAlertsModal } from "@/components/NotContactedAlertsModal";
+import { useSearch } from "@/hooks/use-search";
 
 const trendData = [
   { month: "Nov", value: 20 },
@@ -145,7 +146,12 @@ const instrumentData = [
 ];
 
 export default function BusinessDashboard() {
+  const { query: globalQuery, setPlaceholder } = useSearch();
   const [isLoading, setIsLoading] = useState(true);
+
+  useEffect(() => {
+    setPlaceholder("Search fraud types / categories...");
+  }, [setPlaceholder]);
   const [isDownloadModalOpen, setIsDownloadModalOpen] = useState(false);
 
   const [unreviewedModalOpen, setUnreviewedModalOpen] = useState(false);
@@ -170,6 +176,15 @@ export default function BusinessDashboard() {
     { name: "Bill Payments", percentage: 20 },
     { name: "Others", percentage: 15 },
   ];
+
+  // Top-bar (page-scoped) search filters the fraud-type / category lists.
+  const gq = globalQuery.trim().toLowerCase();
+  const filteredFraudTypes = fraudTypes.filter(
+    (f) => !gq || f.name.toLowerCase().includes(gq),
+  );
+  const filteredTxnCategories = transactionCategories.filter(
+    (c) => !gq || c.name.toLowerCase().includes(gq),
+  );
 
   const handleDownloadClick = () => {
     setIsDownloadModalOpen(true);
@@ -552,19 +567,25 @@ export default function BusinessDashboard() {
               </div>
 
               <div className="space-y-6 flex-1">
-                {fraudTypes.map((f, i) => (
-                  <div
-                    key={i}
-                    className="flex items-center justify-between py-2 border-b border-gray-50 last:border-0"
-                  >
-                    <span className="text-sm font-semibold text-gray-500">
-                      {f.name}
-                    </span>
-                    <span className="text-base font-bold text-gray-900">
-                      {f.percentage}%
-                    </span>
-                  </div>
-                ))}
+                {filteredFraudTypes.length === 0 ? (
+                  <p className="text-sm text-gray-400 py-4">
+                    No fraud types match your search.
+                  </p>
+                ) : (
+                  filteredFraudTypes.map((f, i) => (
+                    <div
+                      key={i}
+                      className="flex items-center justify-between py-2 border-b border-gray-50 last:border-0"
+                    >
+                      <span className="text-sm font-semibold text-gray-500">
+                        {f.name}
+                      </span>
+                      <span className="text-base font-bold text-gray-900">
+                        {f.percentage}%
+                      </span>
+                    </div>
+                  ))
+                )}
               </div>
 
               <div className="flex justify-end pt-10">
@@ -586,19 +607,25 @@ export default function BusinessDashboard() {
               </div>
 
               <div className="space-y-6 flex-1">
-                {transactionCategories.map((c, i) => (
-                  <div
-                    key={i}
-                    className="flex items-center justify-between py-2 border-b border-gray-50 last:border-0"
-                  >
-                    <span className="text-sm font-semibold text-gray-500">
-                      {c.name}
-                    </span>
-                    <span className="text-base font-bold text-gray-900">
-                      {c.percentage}%
-                    </span>
-                  </div>
-                ))}
+                {filteredTxnCategories.length === 0 ? (
+                  <p className="text-sm text-gray-400 py-4">
+                    No categories match your search.
+                  </p>
+                ) : (
+                  filteredTxnCategories.map((c, i) => (
+                    <div
+                      key={i}
+                      className="flex items-center justify-between py-2 border-b border-gray-50 last:border-0"
+                    >
+                      <span className="text-sm font-semibold text-gray-500">
+                        {c.name}
+                      </span>
+                      <span className="text-base font-bold text-gray-900">
+                        {c.percentage}%
+                      </span>
+                    </div>
+                  ))
+                )}
               </div>
 
               <div className="flex justify-end pt-10">

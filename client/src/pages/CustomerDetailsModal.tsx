@@ -5,6 +5,8 @@ import { Badge } from "@/components/ui/badge";
 import { X, ChevronDown, AlertTriangle, Wallet, Loader2, RefreshCw } from "lucide-react";
 import { DateRange } from "react-day-picker";
 import MarkFraudModal from "@/components/MarkFraudModalProps";
+import MarkFalsePositiveModal from "@/components/MarkFalsePositiveModal";
+import DiscardAlertModal from "@/components/DiscardAlertModal";
 import { DatePickerWithRange } from "@/components/date-range-picker";
 import {
   DropdownMenu,
@@ -1372,6 +1374,9 @@ export default function CustomerDetailsModal({
 }) {
   const { toast } = useToast();
   const [isMarkFraudModalOpen, setIsMarkFraudModalOpen] = useState(false);
+  const [isFalsePositiveModalOpen, setIsFalsePositiveModalOpen] =
+    useState(false);
+  const [isDiscardModalOpen, setIsDiscardModalOpen] = useState(false);
   const [isSuspended, setIsSuspended] = useState(false);
   const [activeDetailTab, setActiveDetailTab] = useState("all");
   const [showMoreInfo, setShowMoreInfo] = useState(false);
@@ -1510,27 +1515,50 @@ export default function CustomerDetailsModal({
     setIsMarkFraudModalOpen(false);
   };
 
-  const handleMaskAsFalsePositive = (action) => {
-    if (action === "contacted") {
-      console.log("Customer Contacted: Alert marked as false positive.");
-      // Logic to resolve alert as false positive
-      if (onAction && customerId) onAction(customerId, "CONTACTED");
-      onClose();
-    } else if (action === "not_contacted") {
-      console.log(
-        "Customer Not Contacted: Moving to 'Pending Customer Contact' tab.",
-      );
-      // Logic to move to pending tab and requeue
-      if (onAction && customerId) onAction(customerId, "NOT_CONTACTED");
+  const handleFalsePositiveSubmit = (data: {
+    connection: "connected" | "not_connected";
+    note: string;
+  }) => {
+    setIsFalsePositiveModalOpen(false);
 
+    if (data.connection === "connected") {
+      // Customer reached -> resolve alert as a genuine false positive.
+      console.log("Customer Connected: Alert marked as false positive.", data);
+      if (onAction && customerId)
+        onAction(customerId, "CONTACTED", { note: data.note });
       toast({
-        title: "Alert Requeued",
-        description:
-          "Alert moved to 'Pending Customer Contact'. It will be requeued in 30 minutes.",
+        title: "Marked as False Positive",
+        description: "Customer was contacted. The alert has been resolved.",
       });
-
+      onClose();
+    } else {
+      // Customer could not be reached -> escalate and mark as fraud with the
+      // analyst's reason attached.
+      console.log("Customer Not Connected: Escalating alert to fraud.", data);
+      if (onAction && customerId)
+        onAction(customerId, "FRAUD", {
+          source: "false-positive-not-connected",
+          note: data.note,
+        });
+      toast({
+        title: "Escalated to Fraud",
+        description:
+          "Customer could not be contacted. The alert has been marked as fraud.",
+        variant: "destructive",
+      });
       onClose();
     }
+  };
+
+  const handleDiscardSubmit = (note: string) => {
+    setIsDiscardModalOpen(false);
+    console.log("Alert discarded by analyst:", { customerId, note });
+    if (onAction && customerId) onAction(customerId, "DISCARDED", { note });
+    toast({
+      title: "Alert Discarded",
+      description: "The alert has been discarded and marked in the status.",
+    });
+    onClose();
   };
 
   const handleLoadHistory = () => {
@@ -1663,38 +1691,18 @@ export default function CustomerDetailsModal({
                   variant="outline"
                   size="sm"
                   className="text-gray-600 hover:bg-gray-100"
-                  onClick={() => {
-                    if (onAction && customerId)
-                      onAction(customerId, "DISCARDED");
-                    onClose();
-                  }}
+                  onClick={() => setIsDiscardModalOpen(true)}
                 >
                   Discard
                 </Button>
-                <DropdownMenu>
-                  <DropdownMenuTrigger asChild>
-                    <Button
-                      variant="outline"
-                      size="sm"
-                      className="text-gray-600 gap-1"
-                    >
-                      Mark as False Positive
-                      <ChevronDown className="h-4 w-4" />
-                    </Button>
-                  </DropdownMenuTrigger>
-                  <DropdownMenuContent align="end">
-                    <DropdownMenuItem
-                      onClick={() => handleMaskAsFalsePositive("contacted")}
-                    >
-                      Customer Contacted
-                    </DropdownMenuItem>
-                    <DropdownMenuItem
-                      onClick={() => handleMaskAsFalsePositive("not_contacted")}
-                    >
-                      Customer Not Contacted
-                    </DropdownMenuItem>
-                  </DropdownMenuContent>
-                </DropdownMenu>
+                <Button
+                  variant="outline"
+                  size="sm"
+                  className="text-gray-600"
+                  onClick={() => setIsFalsePositiveModalOpen(true)}
+                >
+                  Mark as False Positive
+                </Button>
                 <Button
                   variant="outline"
                   size="sm"
@@ -2672,6 +2680,20 @@ export default function CustomerDetailsModal({
         isOpen={isMarkFraudModalOpen}
         onClose={() => setIsMarkFraudModalOpen(false)}
         onSubmit={handleFraudSubmit}
+      />
+
+      {/* Mark as False Positive Modal */}
+      <MarkFalsePositiveModal
+        isOpen={isFalsePositiveModalOpen}
+        onClose={() => setIsFalsePositiveModalOpen(false)}
+        onSubmit={handleFalsePositiveSubmit}
+      />
+
+      {/* Discard Alert Modal */}
+      <DiscardAlertModal
+        isOpen={isDiscardModalOpen}
+        onClose={() => setIsDiscardModalOpen(false)}
+        onSubmit={handleDiscardSubmit}
       />
     </div>
   );

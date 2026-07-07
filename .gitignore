@@ -3,3 +3,6 @@ dist/
 temp_zip/
 .env
 *.env.local
+
+.local.zip
+.local/

@@ -22,6 +22,8 @@ import {
   Landmark,
   ShieldCheck,
   FolderUp,
+  ChevronDown,
+  ClipboardList,
 } from "lucide-react";
 
 import { cn } from "@/lib/utils";
@@ -37,6 +39,7 @@ interface SidebarProps {
 export function Sidebar({ isOpen, setIsOpen }: SidebarProps) {
   const [location] = useLocation();
   const { user, logout } = useAuth(); // ✅ dummy logout
+  const [openMenus, setOpenMenus] = useState<Record<string, boolean>>({});
 
   // 🔹 Single navigation array with role info
   const navigation = [
@@ -47,16 +50,27 @@ export function Sidebar({ isOpen, setIsOpen }: SidebarProps) {
       roles: ["BUSINESS_HEAD", "ANALYST", "SUPER_EXECUTIVE"],
     },
     {
-      name: "Files",
+      name: "Negative DB Upload",
       href: "/files",
       icon: FolderUp,
-      roles: ["BUSINESS_HEAD", "ANALYST", "SUPER_EXECUTIVE"],
+      roles: ["BUSINESS_HEAD", "SUPER_EXECUTIVE"],
     },
     {
-      name: "Team Management",
-      href: "/team-management",
+      name: "Management",
       icon: Shield,
       roles: ["BUSINESS_HEAD", "SUPER_EXECUTIVE"],
+      children: [
+        {
+          name: "Team Management",
+          href: "/team-management",
+          roles: ["BUSINESS_HEAD", "SUPER_EXECUTIVE"],
+        },
+        {
+          name: "Case Management",
+          href: "/case-management",
+          roles: ["BUSINESS_HEAD", "SUPER_EXECUTIVE"],
+        },
+      ],
     },
     {
       name: "Super Admin",
@@ -81,7 +95,7 @@ export function Sidebar({ isOpen, setIsOpen }: SidebarProps) {
       name: "System Performance",
       href: "/performance",
       icon: Gauge,
-      roles: ["BUSINESS_HEAD", "SUPER_EXECUTIVE"],
+      roles: [], // hidden for now
     },
     {
       name: "Integrations",
@@ -171,7 +185,74 @@ export function Sidebar({ isOpen, setIsOpen }: SidebarProps) {
           <nav className="flex-1 overflow-y-auto p-4 space-y-1 custom-scrollbar">
             {navigation
               .filter((item) => item.roles.includes(user?.role ?? ""))
-              .map((item) => {
+              .map((item: any) => {
+                // Dropdown group (e.g. Management → Team / Case Management)
+                if (item.children) {
+                  const visibleChildren = item.children.filter((c: any) =>
+                    c.roles.includes(user?.role ?? ""),
+                  );
+                  if (visibleChildren.length === 0) return null;
+                  const childActive = visibleChildren.some((c: any) =>
+                    location.startsWith(c.href),
+                  );
+                  const open = openMenus[item.name] ?? childActive;
+                  return (
+                    <div key={item.name}>
+                      <button
+                        type="button"
+                        onClick={() =>
+                          setOpenMenus((m) => ({
+                            ...m,
+                            [item.name]: !(m[item.name] ?? childActive),
+                          }))
+                        }
+                        className={cn(
+                          "w-full flex items-center space-x-3 px-4 py-3 rounded-lg transition-colors",
+                          childActive
+                            ? "text-white"
+                            : "text-slate-300 hover:bg-slate-700",
+                        )}
+                      >
+                        <item.icon className="h-5 w-5" />
+                        <span className="flex-1 text-left text-sm font-medium">
+                          {item.name}
+                        </span>
+                        <ChevronDown
+                          className={cn(
+                            "h-4 w-4 transition-transform",
+                            open ? "rotate-180" : "",
+                          )}
+                        />
+                      </button>
+                      {open && (
+                        <div className="mt-1 space-y-1">
+                          {visibleChildren.map((c: any) => {
+                            const active = location.startsWith(c.href);
+                            return (
+                              <Link key={c.name} href={c.href}>
+                                <a
+                                  onClick={() => setIsOpen(false)}
+                                  className={cn(
+                                    "flex items-center space-x-3 py-2.5 rounded-lg transition-colors pl-12 text-sm border-l border-slate-700 ml-4 rounded-l-none",
+                                    active
+                                      ? "bg-[#46CDCF] text-white"
+                                      : "text-slate-300 hover:bg-slate-700",
+                                  )}
+                                >
+                                  <div className="w-1.5 h-1.5 rounded-full bg-slate-500 shrink-0" />
+                                  <span className="flex-1 text-sm font-medium">
+                                    {c.name}
+                                  </span>
+                                </a>
+                              </Link>
+                            );
+                          })}
+                        </div>
+                      )}
+                    </div>
+                  );
+                }
+
                 const isActive =
                   item.href &&
                   (location === item.href ||

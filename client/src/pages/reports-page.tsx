@@ -1,10 +1,23 @@
-import { useState } from "react";
+import { useState, useMemo, useEffect } from "react";
 import { MainLayout } from "@/components/layout/main-layout";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
-import { Download, Edit2, ShieldAlert, Trash2 } from "lucide-react";
+import { Input } from "@/components/ui/input";
+import {
+  Download,
+  Edit2,
+  ShieldAlert,
+  Trash2,
+  Search,
+  ChevronLeft,
+  ChevronRight,
+} from "lucide-react";
+import { DatePickerWithRange } from "@/components/date-range-picker";
+import { addDays } from "date-fns";
+import { type DateRange } from "react-day-picker";
 import DownloadInsightsModal from "@/components/DownloadInsightsModal";
 import { useAuth } from "@/hooks/use-auth";
+import { useSearch } from "@/hooks/use-search";
 import {
   AlertDialog,
   AlertDialogAction,
@@ -19,7 +32,10 @@ import { useToast } from "@/hooks/use-toast";
 
 const AuditLogsContent = ({ role }: { role: string }) => {
   const { toast } = useToast();
-  const canEdit = role === "SUPER_EXECUTIVE";
+  const { query: globalQuery } = useSearch();
+  // Rights model: logs are immutable — NO role (not even Super Admin) can edit
+  // or delete audit logs.
+  const canEdit = false;
   const [logToDelete, setLogToDelete] = useState<string | null>(null);
 
   const logs = [
@@ -75,12 +91,10 @@ const AuditLogsContent = ({ role }: { role: string }) => {
             History of all system actions and configuration changes.
           </p>
         </div>
-        {canEdit && (
-          <Badge className="bg-purple-100 text-purple-700 hover:bg-purple-200 border-0 flex items-center gap-1">
-            <ShieldAlert className="h-3 w-3" />
-            Super Executive Mode
-          </Badge>
-        )}
+        <Badge className="bg-gray-100 text-gray-600 hover:bg-gray-100 border-0 flex items-center gap-1">
+          <ShieldAlert className="h-3 w-3" />
+          Read-only · Immutable
+        </Badge>
       </div>
 
       <div className="border rounded-lg overflow-hidden">
@@ -96,7 +110,18 @@ const AuditLogsContent = ({ role }: { role: string }) => {
             </tr>
           </thead>
           <tbody className="divide-y divide-gray-100">
-            {logs.map((log) => (
+            {logs
+              .filter((log) => {
+                const lq = globalQuery.trim().toLowerCase();
+                return (
+                  !lq ||
+                  log.id.toLowerCase().includes(lq) ||
+                  log.user.toLowerCase().includes(lq) ||
+                  log.action.toLowerCase().includes(lq) ||
+                  log.status.toLowerCase().includes(lq)
+                );
+              })
+              .map((log) => (
               <tr key={log.id} className="hover:bg-gray-50 transition-colors">
                 <td className="p-3 font-mono text-gray-400">{log.id}</td>
                 <td className="p-3 font-medium text-gray-900">{log.user}</td>
@@ -171,8 +196,101 @@ const AuditLogsContent = ({ role }: { role: string }) => {
   );
 };
 
-const CaseManagementContent = () => {
+// ─── Mock pending-cases dataset (spread across ~90 days) ─────────────────────
+const CASE_TYPES = [
+  "Transaction Fraud",
+  "Account Takeover",
+  "Card Skimming",
+  "Identity Theft",
+  "Money Laundering",
+  "Phishing Attempt",
+];
+const CASE_SEVERITIES = ["High", "Medium", "Low"];
+const CASE_AGENTS = ["Agent A", "Agent B", "Agent C", "Unassigned"];
+
+function generatePendingCases() {
+  const today = new Date();
+  return Array.from({ length: 60 }, (_, i) => {
+    const d = new Date(today);
+    d.setDate(today.getDate() - Math.floor(i * 1.5)); // ~0–88 days back
+    return {
+      id: `CAS-2025-${String(i + 1).padStart(3, "0")}`,
+      severity: CASE_SEVERITIES[i % CASE_SEVERITIES.length],
+      type: CASE_TYPES[i % CASE_TYPES.length],
+      assignedTo: CASE_AGENTS[i % CASE_AGENTS.length],
+      createdAt: d.toISOString(),
+    };
+  });
+}
+
+const CASE_PAGE_SIZE = 20;
+
+export const CaseManagementContent = () => {
+  const { query: globalQuery } = useSearch();
   const [allocationMode, setAllocationMode] = useState("Automatic Allocation");
+  const allCases = useMemo(() => generatePendingCases(), []);
+
+  // Default view: last 45 days of pending cases.
+  const [searchQuery, setSearchQuery] = useState("");
+  const [dateRange, setDateRange] = useState<DateRange | undefined>(() => {
+    const today = new Date();
+    return { from: addDays(today, -60), to: today };
+  });
+  const [page, setPage] = useState(1);
+
+  const filteredCases = useMemo(() => {
+    // Combine the in-page search box with the top-bar (page-scoped) search.
+    const q = `${searchQuery} ${globalQuery}`.trim().toLowerCase();
+    const from = dateRange?.from
+      ? new Date(dateRange.from).setHours(0, 0, 0, 0)
+      : -Infinity;
+    const to = dateRange?.to
+      ? new Date(dateRange.to).setHours(23, 59, 59, 999)
+      : Infinity;
+
+    const terms = q.split(/\s+/).filter(Boolean);
+    return allCases
+      .filter((c) => {
+        const haystack =
+          `${c.id} ${c.type} ${c.severity} ${c.assignedTo}`.toLowerCase();
+        const matchesSearch =
+          terms.length === 0 || terms.every((term) => haystack.includes(term));
+        const t = new Date(c.createdAt).getTime();
+        const matchesDate = t >= from && t <= to;
+        return matchesSearch && matchesDate;
+      })
+      // Current (most recent) cases on top.
+      .sort(
+        (a, b) =>
+          new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime(),
+      );
+  }, [allCases, searchQuery, globalQuery, dateRange]);
+
+  const totalPages = Math.max(1, Math.ceil(filteredCases.length / CASE_PAGE_SIZE));
+
+  // Keep the current page valid whenever filters change.
+  useEffect(() => {
+    setPage(1);
+  }, [searchQuery, globalQuery, dateRange]);
+
+  const pageItems = filteredCases.slice(
+    (page - 1) * CASE_PAGE_SIZE,
+    page * CASE_PAGE_SIZE,
+  );
+
+  const severityClass = (s: string) =>
+    s === "High"
+      ? "bg-red-100 text-red-700"
+      : s === "Medium"
+        ? "bg-orange-100 text-orange-700"
+        : "bg-teal-100 text-teal-700";
+
+  const formatDate = (iso: string) =>
+    new Date(iso).toLocaleDateString("en-PK", {
+      year: "numeric",
+      month: "short",
+      day: "numeric",
+    });
 
   return (
     <div className="bg-white border border-gray-200 rounded-lg shadow-sm p-6">
@@ -224,9 +342,66 @@ const CaseManagementContent = () => {
         </div>
       ) : (
         <div>
-          <h3 className="text-base font-semibold text-gray-900 mb-4">
-            Pending Cases for Allocation
-          </h3>
+          <div className="flex flex-col sm:flex-row sm:items-end justify-between gap-4 mb-4">
+            <div>
+              <h3 className="text-base font-semibold text-gray-900">
+                Pending Cases for Allocation
+              </h3>
+              <p className="text-xs text-gray-500 mt-1">
+                Showing pending cases in the selected range (default: last 60
+                days). Newest cases appear first.
+              </p>
+            </div>
+          </div>
+
+          {/* Filters: search + date range */}
+          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4 mb-4">
+            <div className="space-y-1.5">
+              <label className="text-[13px] font-semibold text-slate-500">
+                Search
+              </label>
+              <div className="relative">
+                <Search className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400 h-4 w-4" />
+                <Input
+                  placeholder="Case ID, type, agent..."
+                  value={searchQuery}
+                  onChange={(e) => setSearchQuery(e.target.value)}
+                  className="pl-10 h-10 border-gray-200 rounded-lg text-sm"
+                />
+              </div>
+            </div>
+            <div className="space-y-1.5">
+              <label className="text-[13px] font-semibold text-slate-500">
+                Date Range
+              </label>
+              <DatePickerWithRange
+                value={dateRange}
+                onChange={setDateRange}
+                align="start"
+              />
+            </div>
+            <div className="flex items-end">
+              <Button
+                variant="outline"
+                size="sm"
+                className="h-10"
+                onClick={() => {
+                  const today = new Date();
+                  setSearchQuery("");
+                  setDateRange({ from: addDays(today, -60), to: today });
+                }}
+              >
+                Reset (Last 60 days)
+              </Button>
+            </div>
+          </div>
+
+          <div className="mb-3 text-sm font-medium text-slate-500">
+            Found{" "}
+            <span className="text-gray-900">{filteredCases.length}</span> pending
+            case{filteredCases.length !== 1 ? "s" : ""}
+          </div>
+
           <div className="border rounded-lg overflow-hidden">
             <table className="w-full text-sm text-left">
               <thead className="bg-gray-50 text-gray-700 font-medium">
@@ -234,34 +409,112 @@ const CaseManagementContent = () => {
                   <th className="p-3">Case ID</th>
                   <th className="p-3">Severity</th>
                   <th className="p-3">Type</th>
+                  <th className="p-3">Date</th>
                   <th className="p-3">Assign To</th>
                 </tr>
               </thead>
               <tbody className="divide-y divide-gray-100">
-                {[1, 2, 3].map((i) => (
-                  <tr key={i} className="hover:bg-gray-50">
-                    <td className="p-3 font-mono text-gray-600">
-                      CAS-2025-00{i}
-                    </td>
-                    <td className="p-3">
-                      <span className="px-2 py-1 bg-red-100 text-red-700 rounded-full text-xs font-medium">
-                        High
-                      </span>
-                    </td>
-                    <td className="p-3 text-gray-600">Transaction Fraud</td>
-                    <td className="p-3">
-                      <select className="border border-gray-300 rounded px-2 py-1 text-sm bg-white focus:outline-none focus:border-blue-500">
-                        <option>Select Agent</option>
-                        <option>Agent A</option>
-                        <option>Agent B</option>
-                        <option>Agent C</option>
-                      </select>
+                {pageItems.length === 0 ? (
+                  <tr>
+                    <td colSpan={5} className="p-8 text-center text-gray-500">
+                      No pending cases match your filters.
                     </td>
                   </tr>
-                ))}
+                ) : (
+                  pageItems.map((c) => (
+                    <tr key={c.id} className="hover:bg-gray-50">
+                      <td className="p-3 font-mono text-gray-600">{c.id}</td>
+                      <td className="p-3">
+                        <span
+                          className={`px-2 py-1 rounded-full text-xs font-medium ${severityClass(
+                            c.severity,
+                          )}`}
+                        >
+                          {c.severity}
+                        </span>
+                      </td>
+                      <td className="p-3 text-gray-600">{c.type}</td>
+                      <td className="p-3 text-gray-500 whitespace-nowrap">
+                        {formatDate(c.createdAt)}
+                      </td>
+                      <td className="p-3">
+                        <select
+                          defaultValue={c.assignedTo}
+                          className="border border-gray-300 rounded px-2 py-1 text-sm bg-white focus:outline-none focus:border-blue-500"
+                        >
+                          <option>Select Agent</option>
+                          <option>Agent A</option>
+                          <option>Agent B</option>
+                          <option>Agent C</option>
+                        </select>
+                      </td>
+                    </tr>
+                  ))
+                )}
               </tbody>
             </table>
           </div>
+
+          {/* Pagination */}
+          {filteredCases.length > CASE_PAGE_SIZE && (
+            <div className="flex flex-col sm:flex-row items-center justify-between mt-4 gap-3">
+              <div className="text-sm text-slate-500">
+                Showing{" "}
+                <span className="text-gray-900 font-medium">
+                  {(page - 1) * CASE_PAGE_SIZE + 1}
+                </span>{" "}
+                –{" "}
+                <span className="text-gray-900 font-medium">
+                  {Math.min(page * CASE_PAGE_SIZE, filteredCases.length)}
+                </span>{" "}
+                of{" "}
+                <span className="text-gray-900 font-medium">
+                  {filteredCases.length}
+                </span>
+              </div>
+              <div className="flex items-center gap-2">
+                <Button
+                  variant="outline"
+                  size="sm"
+                  className="gap-1 h-9"
+                  disabled={page === 1}
+                  onClick={() => setPage((p) => Math.max(1, p - 1))}
+                >
+                  <ChevronLeft className="h-4 w-4" />
+                  Previous
+                </Button>
+                <div className="flex items-center gap-1">
+                  {Array.from({ length: totalPages }, (_, i) => i + 1).map(
+                    (p) => (
+                      <Button
+                        key={p}
+                        variant={p === page ? "default" : "ghost"}
+                        size="sm"
+                        className={`w-9 h-9 p-0 font-semibold ${
+                          p === page
+                            ? "bg-blue-600 text-white hover:bg-blue-700"
+                            : "text-slate-600 hover:bg-gray-100"
+                        }`}
+                        onClick={() => setPage(p)}
+                      >
+                        {p}
+                      </Button>
+                    ),
+                  )}
+                </div>
+                <Button
+                  variant="outline"
+                  size="sm"
+                  className="gap-1 h-9"
+                  disabled={page === totalPages}
+                  onClick={() => setPage((p) => Math.min(totalPages, p + 1))}
+                >
+                  Next
+                  <ChevronRight className="h-4 w-4" />
+                </Button>
+              </div>
+            </div>
+          )}
         </div>
       )}
     </div>
@@ -270,7 +523,16 @@ const CaseManagementContent = () => {
 
 export default function ReportsPage() {
   const { user } = useAuth();
+  const { query: globalQuery, setPlaceholder } = useSearch();
   const [activeTab, setActiveTab] = useState("all-reports");
+
+  useEffect(() => {
+    setPlaceholder(
+      activeTab === "audit-logs"
+        ? "Search logs (user, action)..."
+        : "Search reports...",
+    );
+  }, [activeTab, setPlaceholder]);
   const [isDownloadModalOpen, setIsDownloadModalOpen] = useState(false);
   const [selectedReport, setSelectedReport] = useState<any>(null);
 
@@ -358,16 +620,6 @@ export default function ReportsPage() {
             All Reports
           </button>
           <button
-            onClick={() => setActiveTab("case-management")}
-            className={`px-4 py-2 rounded-lg font-medium transition-all ${
-              activeTab === "case-management"
-                ? "bg-gray-200 text-gray-900 shadow-sm border border-gray-300"
-                : "text-gray-600 hover:bg-gray-100"
-            }`}
-          >
-            Case Management
-          </button>
-          <button
             onClick={() => setActiveTab("audit-logs")}
             className={`px-4 py-2 rounded-lg font-medium transition-all ${
               activeTab === "audit-logs"
@@ -387,7 +639,16 @@ export default function ReportsPage() {
               </h2>
             </div>
             <div className="divide-y divide-gray-200 overflow-x-auto">
-              {reports.map((report, index) => (
+              {reports
+                .filter((report) => {
+                  const rq = globalQuery.trim().toLowerCase();
+                  return (
+                    !rq ||
+                    report.type.toLowerCase().includes(rq) ||
+                    report.description.toLowerCase().includes(rq)
+                  );
+                })
+                .map((report, index) => (
                 <div
                   key={index}
                   className="grid grid-cols-1 sm:grid-cols-12 px-4 sm:px-6 py-4 items-center hover:bg-gray-50 gap-2 sm:gap-0"
@@ -413,7 +674,6 @@ export default function ReportsPage() {
           </div>
         )}
 
-        {activeTab === "case-management" && <CaseManagementContent />}
         {activeTab === "audit-logs" && (
           <AuditLogsContent role={user?.role || "ANALYST"} />
         )}

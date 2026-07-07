@@ -17,8 +17,10 @@ import { Button } from "@/components/ui/button";
 import { MainLayout } from "@/components/layout/main-layout";
 import { getAnalysts, initAnalysts, type Analyst } from "@/hooks/use-analysts";
 import { AlertControlPanel } from "@/components/AlertControlPanel";
+import { useSearch } from "@/hooks/use-search";
 
 export default function TeamManagementPage() {
+  const { query: globalQuery, setPlaceholder } = useSearch();
   const [analysts, setAnalysts] = useState<Analyst[]>([]);
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [isManageModalOpen, setIsManageModalOpen] = useState(false);
@@ -39,17 +41,28 @@ export default function TeamManagementPage() {
     return () => window.removeEventListener("storage", handleStorage);
   }, [loadAnalysts]);
 
+  useEffect(() => {
+    setPlaceholder("Search analysts (name, username, role)...");
+  }, [setPlaceholder]);
+
   const statusOrder: Record<string, number> = { Pending: 0, Active: 1, Inactive: 2 };
 
+  const gq = globalQuery.trim().toLowerCase();
   const filteredAnalysts = analysts
     .filter((a) => {
       const matchesSearch =
         a.name.toLowerCase().includes(searchQuery.toLowerCase()) ||
         a.username.toLowerCase().includes(searchQuery.toLowerCase());
+      const matchesGlobal =
+        !gq ||
+        a.name.toLowerCase().includes(gq) ||
+        a.username.toLowerCase().includes(gq) ||
+        a.role.toLowerCase().includes(gq) ||
+        a.status.toLowerCase().includes(gq);
       const matchesStatus =
         statusFilter === "all" ||
         a.status.toLowerCase() === statusFilter.toLowerCase();
-      return matchesSearch && matchesStatus;
+      return matchesSearch && matchesGlobal && matchesStatus;
     })
     .sort((a, b) => (statusOrder[a.status] ?? 3) - (statusOrder[b.status] ?? 3));
 
