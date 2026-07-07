@@ -161,7 +161,7 @@ export function FileUploadSection() {
             <Lock className="mt-0.5 h-3.5 w-3.5 shrink-0" />
             <span>
               Only the <strong>Super Admin</strong> and <strong>Executive</strong>{" "}
-              can upload Negative Database data. You have view-only access.
+              can upload files. You have view-only access.
             </span>
           </div>
         )}

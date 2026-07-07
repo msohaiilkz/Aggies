@@ -50,7 +50,7 @@ export function Sidebar({ isOpen, setIsOpen }: SidebarProps) {
       roles: ["BUSINESS_HEAD", "ANALYST", "SUPER_EXECUTIVE"],
     },
     {
-      name: "Negative DB Upload",
+      name: "File Upload",
       href: "/files",
       icon: FolderUp,
       roles: ["BUSINESS_HEAD", "SUPER_EXECUTIVE"],
