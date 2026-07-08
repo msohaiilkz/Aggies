@@ -1664,7 +1664,7 @@ export default function CustomerDetailsModal({
     <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4">
       <div className="bg-gray-50 rounded-lg max-w-6xl w-full max-h-[90vh] overflow-y-auto">
         {/* Header */}
-        <div className=" bg-white flex items-center justify-between p-6 border-b">
+        <div className=" bg-white flex flex-wrap items-center justify-between gap-4 p-4 sm:p-6 border-b">
           <div>
             <h2 className="text-2xl font-semibold text-gray-900">
               {customer.name}
@@ -1673,7 +1673,7 @@ export default function CustomerDetailsModal({
               Transaction ID: {customer.transactionId}
             </p>
           </div>
-          <div className="flex items-center space-x-3">
+          <div className="flex flex-wrap items-center gap-2">
             {alertStatus === "FRAUD" || alertStatus === "DISCARDED" ? (
               <Button
                 size="sm"

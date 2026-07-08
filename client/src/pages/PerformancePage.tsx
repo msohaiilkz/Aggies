@@ -195,7 +195,7 @@ const PerformancePage = () => {
       <MainLayout title="Performance">
         <div className="p-8 space-y-8 animate-pulse text-center">
           <div className="h-96 bg-gray-100 rounded-xl"></div>
-          <div className="grid grid-cols-2 gap-8">
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-8">
             <div className="h-60 bg-gray-100 rounded-xl"></div>
             <div className="h-60 bg-gray-100 rounded-xl"></div>
           </div>

@@ -200,7 +200,7 @@ export default function BusinessDashboard() {
         <div className="flex-1 p-8">
           <div className="animate-pulse space-y-6">
             <div className="h-8 bg-gray-200 rounded w-1/4"></div>
-            <div className="grid grid-cols-4 gap-6">
+            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-6">
               {[...Array(4)].map((_, i) => (
                 <div
                   key={i}
@@ -311,7 +311,7 @@ export default function BusinessDashboard() {
         {/* Fraud Loss Over Time */}
         <Card className="bg-white border-0 shadow-sm rounded-xl overflow-hidden">
           <CardContent className="p-0">
-            <div className="p-6 flex items-center justify-between border-b border-gray-50">
+            <div className="p-6 flex flex-col sm:flex-row sm:items-center justify-between gap-3 border-b border-gray-50">
               <h3 className="text-lg font-bold text-gray-900">
                 Fraud Loss Over Time
               </h3>
@@ -409,7 +409,7 @@ export default function BusinessDashboard() {
         {/* Fraud Trend Analytics */}
         <Card className="bg-white border-0 shadow-sm rounded-xl overflow-hidden">
           <CardContent className="p-0">
-            <div className="p-6 flex items-center justify-between border-b border-gray-50">
+            <div className="p-6 flex flex-col sm:flex-row sm:items-center justify-between gap-3 border-b border-gray-50">
               <h3 className="text-lg font-bold text-gray-900">
                 Fraud Trend Analytics
               </h3>
@@ -701,7 +701,7 @@ export default function BusinessDashboard() {
         {/* Geographic Distribution */}
         <Card className="bg-white border-0 shadow-sm rounded-xl overflow-hidden mb-8">
           <CardContent className="p-0">
-            <div className="p-6 flex items-center justify-between border-b border-gray-50">
+            <div className="p-6 flex flex-col sm:flex-row sm:items-center justify-between gap-3 border-b border-gray-50">
               <h3 className="text-lg font-bold text-gray-900">
                 Geographic Distribution
               </h3>

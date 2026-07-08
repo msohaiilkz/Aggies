@@ -126,7 +126,7 @@ export function CreateAnalystModal({
         </div>
 
         <form onSubmit={handleSubmit} className="space-y-4 py-1">
-          <div className="grid grid-cols-2 gap-4">
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
             <div className="space-y-1.5">
               <label className="text-sm font-medium">First Name</label>
               <Input

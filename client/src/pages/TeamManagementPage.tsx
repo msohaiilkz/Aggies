@@ -229,7 +229,8 @@ export default function TeamManagementPage() {
               </div>
             </CardHeader>
             <CardContent className="p-0">
-              <table className="w-full text-left bg-white">
+              <div className="overflow-x-auto">
+              <table className="w-full min-w-[820px] text-left bg-white">
                 <thead>
                   <tr className="bg-gray-50/50 border-b border-gray-100">
                     <th className="p-4 font-medium text-gray-500 text-sm">Full Name</th>
@@ -336,6 +337,7 @@ export default function TeamManagementPage() {
                   )}
                 </tbody>
               </table>
+              </div>
             </CardContent>
           </Card>
 

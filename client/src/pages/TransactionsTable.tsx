@@ -72,7 +72,7 @@ export default function TransactionsTable() {
         <Card className="bg-white border-0 shadow-sm">
           <CardContent className="p-6">
             {/* Filters Row */}
-            <div className="grid grid-cols-4 gap-4 mb-6">
+            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4 mb-6">
               <Input
                 placeholder="Search by global id"
                 className="text-sm border-gray-300"

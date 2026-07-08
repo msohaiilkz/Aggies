@@ -97,8 +97,8 @@ const AuditLogsContent = ({ role }: { role: string }) => {
         </Badge>
       </div>
 
-      <div className="border rounded-lg overflow-hidden">
-        <table className="w-full text-sm text-left">
+      <div className="border rounded-lg overflow-x-auto">
+        <table className="w-full min-w-[640px] text-sm text-left">
           <thead className="bg-gray-50 text-gray-700 font-medium">
             <tr>
               <th className="p-3">Log ID</th>
