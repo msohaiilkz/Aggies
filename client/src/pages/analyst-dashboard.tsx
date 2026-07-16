@@ -791,15 +791,14 @@ export default function FraudDashboard({
 
   const formatDateTime = (iso: string) => {
     const d = new Date(iso);
-    return d
-      .toLocaleString("en-US", {
-        day: "2-digit",
-        month: "short",
-        hour: "2-digit",
-        minute: "2-digit",
-        hour12: true,
-      })
-      .replace(",", ",");
+    return d.toLocaleString("en-US", {
+      day: "2-digit",
+      month: "short",
+      year: "numeric",
+      hour: "2-digit",
+      minute: "2-digit",
+      hour12: true,
+    });
   };
 
   const statusBadge = (status: string) => {
@@ -1140,16 +1139,13 @@ export default function FraudDashboard({
                       Customer
                     </th>
                     <th className="p-4 text-left font-medium text-gray-900 text-sm">
-                      <div className="flex items-center">
-                        Customer # / CIF
-                        <ChevronDown className="ml-1 h-4 w-4 text-gray-400" />
-                      </div>
+                      CNIC / Passport No
                     </th>
                     <th className="p-4 text-left font-medium text-gray-900 text-sm">
                       Rule
                     </th>
                     <th className="p-4 text-left font-medium text-gray-900 text-sm">
-                      Alert Source
+                      Engine Type
                     </th>
                     <th className="p-4 text-left font-medium text-gray-900 text-sm">
                       Assigned To
@@ -1211,11 +1207,17 @@ export default function FraudDashboard({
                             </div>
                           </td>
                           <td className="p-4 text-sm font-semibold text-gray-700 whitespace-nowrap">
-                            {ruleLabel(alert.alertSource)}
+                            Rule {ruleIndexFor(alert.alertSource)}
                           </td>
                           <td className="p-4">
-                            <span className="inline-block rounded border border-blue-100 bg-blue-50 px-2 py-1 text-xs font-medium text-blue-700">
-                              {alert.alertSource}
+                            <span
+                              className={`inline-block rounded-full px-2.5 py-1 text-xs font-semibold ${
+                                engineTypeOf(alert.alertSource) === "AI Model"
+                                  ? "bg-purple-100 text-purple-700"
+                                  : "bg-blue-100 text-blue-700"
+                              }`}
+                            >
+                              {engineTypeOf(alert.alertSource)}
                             </span>
                           </td>
                           <td className="p-4">
@@ -1253,59 +1255,49 @@ export default function FraudDashboard({
                             {statusBadge(alert.status)}
                           </td>
                           <td className="p-4">
-                            <div className="flex min-w-[250px] flex-col gap-2 rounded-lg border border-gray-100 bg-gray-50/60 p-2.5">
-                              <div className="flex items-center gap-1.5">
-                                <span className="rounded bg-white px-2 py-1 text-[11px] font-semibold text-gray-600 ring-1 ring-gray-200 whitespace-nowrap">
-                                  {(alert as any).analyst}
-                                </span>
-                                <ArrowRightLeft className="h-3.5 w-3.5 shrink-0 text-[#46CDCF]" />
-                                <Select
-                                  value={(alert as any).analyst}
-                                  onValueChange={(v) =>
-                                    handleReassignAnalyst(alert.id, v)
-                                  }
-                                >
-                                  <SelectTrigger className="h-8 flex-1 bg-white text-xs">
+                            <div className="flex w-[170px] flex-col gap-1.5">
+                              <Select
+                                value={(alert as any).analyst}
+                                onValueChange={(v) =>
+                                  handleReassignAnalyst(alert.id, v)
+                                }
+                              >
+                                <SelectTrigger className="h-8 w-full bg-white text-xs">
+                                  <div className="flex items-center gap-1.5 min-w-0">
+                                    <ArrowRightLeft className="h-3.5 w-3.5 shrink-0 text-[#46CDCF]" />
                                     <SelectValue />
-                                  </SelectTrigger>
-                                  <SelectContent>
-                                    {ANALYSTS.map((name) => (
-                                      <SelectItem key={name} value={name}>
-                                        {name}
-                                        {name === (alert as any).analyst
-                                          ? " (current)"
-                                          : ""}
-                                        {!isAnalystOnline(name)
-                                          ? " — offline"
-                                          : ""}
-                                      </SelectItem>
-                                    ))}
-                                  </SelectContent>
-                                </Select>
-                              </div>
+                                  </div>
+                                </SelectTrigger>
+                                <SelectContent>
+                                  {ANALYSTS.map((name) => (
+                                    <SelectItem key={name} value={name}>
+                                      {name}
+                                      {name === (alert as any).analyst
+                                        ? " (current)"
+                                        : ""}
+                                      {!isAnalystOnline(name)
+                                        ? " — offline"
+                                        : ""}
+                                    </SelectItem>
+                                  ))}
+                                </SelectContent>
+                              </Select>
 
                               {closed && (
-                                <>
-                                  {!online && (
-                                    <div className="flex items-start gap-1.5 rounded-md bg-amber-50 px-2 py-1.5 text-[11px] leading-snug text-amber-700">
-                                      <AlertTriangle className="mt-0.5 h-3.5 w-3.5 shrink-0" />
-                                      <span>
-                                        Current owner is offline. The reopened
-                                        alert will remain assigned and become
-                                        actionable when the analyst returns
-                                        online.
-                                      </span>
-                                    </div>
-                                  )}
-                                  <Button
-                                    size="sm"
-                                    onClick={() => setReopenTargetId(alert.id)}
-                                    className="h-8 w-full gap-1.5 bg-blue-600 text-xs font-semibold text-white hover:bg-blue-700"
-                                  >
-                                    <RotateCcw className="h-3.5 w-3.5" />
-                                    Reopen Alert
-                                  </Button>
-                                </>
+                                <Button
+                                  size="sm"
+                                  onClick={() => setReopenTargetId(alert.id)}
+                                  className="h-8 w-full gap-1.5 bg-blue-600 text-xs font-semibold text-white hover:bg-blue-700"
+                                >
+                                  <RotateCcw className="h-3.5 w-3.5" />
+                                  Reopen
+                                </Button>
+                              )}
+                              {closed && !online && (
+                                <p className="flex items-start gap-1 text-[10px] leading-tight text-amber-600">
+                                  <AlertTriangle className="mt-0.5 h-3 w-3 shrink-0" />
+                                  Owner offline — stays assigned till they return.
+                                </p>
                               )}
                             </div>
                           </td>
