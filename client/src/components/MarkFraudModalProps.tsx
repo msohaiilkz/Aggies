@@ -9,6 +9,42 @@ import {
 } from "@/components/ui/select";
 import { X, Check } from "lucide-react";
 import money from "../assets/4.png";
+
+// Client's "Fraud Types" sheet — each type with its common fraud reasons.
+const FRAUD_TYPES: { type: string; reasons: string[] }[] = [
+  {
+    type: "Account Takeover (ATO)",
+    reasons: ["Unauthorized Login", "Credential Compromise"],
+  },
+  {
+    type: "Unauthorized Funds Transfer",
+    reasons: ["Customer Did Not Authorize Transfer"],
+  },
+  { type: "SIM Swap Fraud", reasons: ["SIM Swapped Before Transaction"] },
+  {
+    type: "Phishing / Credential Theft",
+    reasons: ["Fake Call (Bank Impersonation)", "Fake SMS", "Fake Website"],
+  },
+  { type: "OTP Fraud", reasons: ["Customer Shared OTP", "OTP Compromised"] },
+  {
+    type: "Social Engineering Scam",
+    reasons: [
+      "Bank Staff Impersonation",
+      "Investment Scam",
+      "Prize/Lottery Scam",
+    ],
+  },
+  {
+    type: "Remote Access / Malware Fraud",
+    reasons: ["AnyDesk/TeamViewer Installed", "Malware Infection"],
+  },
+  {
+    type: "Device Change Fraud",
+    reasons: ["New Device Registered Before Transaction"],
+  },
+  { type: "Other", reasons: [] }, // Specify in Comments
+];
+
 interface MarkFraudModalProps {
   isOpen: boolean;
   onClose: () => void;
@@ -21,14 +57,25 @@ export default function MarkFraudModal({
   onSubmit,
 }: MarkFraudModalProps) {
   const [fraudType, setFraudType] = useState("");
-  const [reason, setReason] = useState("");
-  const [noteType, setNoteType] = useState("text");
+  const [fraudReason, setFraudReason] = useState("");
+  const [contactStatus, setContactStatus] = useState("");
   const [textNote, setTextNote] = useState("");
 
   if (!isOpen) return null;
 
+  const selectedType = FRAUD_TYPES.find((t) => t.type === fraudType);
+  const reasons = selectedType?.reasons ?? [];
+  const isOther = fraudType === "Other";
+  const needsReason = reasons.length > 0;
+
+  const canSubmit =
+    !!fraudType &&
+    !!contactStatus &&
+    (isOther ? textNote.trim().length > 0 : !needsReason || !!fraudReason);
+
   const handleSubmit = () => {
-    const data = { fraudType, reason, noteType, note: textNote };
+    if (!canSubmit) return;
+    const data = { fraudType, fraudReason, contactStatus, note: textNote };
     onSubmit(data);
     onClose();
   };
@@ -61,108 +108,85 @@ export default function MarkFraudModal({
             <label className="block text-sm font-medium text-gray-800 mb-2">
               Assign Fraud Type<span className="text-red-500">*</span>
             </label>
-            <Select value={fraudType} onValueChange={setFraudType}>
+            <Select
+              value={fraudType}
+              onValueChange={(v) => {
+                setFraudType(v);
+                setFraudReason("");
+              }}
+            >
               <SelectTrigger className="w-full border-gray-300 rounded-lg h-11 px-3">
                 <SelectValue placeholder="Choose a type from here..." />
               </SelectTrigger>
               <SelectContent>
-                <SelectItem value="card-fraud">Card Fraud</SelectItem>
-                <SelectItem value="identity-theft">Identity Theft</SelectItem>
-                <SelectItem value="phishing">Phishing</SelectItem>
-                <SelectItem value="money-laundering">
-                  Money Laundering
-                </SelectItem>
-                <SelectItem value="account-takeover">
-                  Account Takeover
-                </SelectItem>
-                <SelectItem value="synthetic-fraud">Synthetic Fraud</SelectItem>
-                <SelectItem value="check-fraud">Check Fraud</SelectItem>
-                <SelectItem value="wire-fraud">Wire Fraud</SelectItem>
-                <SelectItem value="other">Other</SelectItem>
+                {FRAUD_TYPES.map((t) => (
+                  <SelectItem key={t.type} value={t.type}>
+                    {t.type}
+                  </SelectItem>
+                ))}
               </SelectContent>
             </Select>
           </div>
 
-          {/* Reason */}
+          {/* Common Fraud Reason — depends on the selected Fraud Type */}
+          {needsReason && (
+            <div>
+              <label className="block text-sm font-medium text-gray-800 mb-2">
+                Common Fraud Reason<span className="text-red-500">*</span>
+              </label>
+              <Select value={fraudReason} onValueChange={setFraudReason}>
+                <SelectTrigger className="w-full border-gray-300 rounded-lg h-11 px-3">
+                  <SelectValue placeholder="Choose a reason from here..." />
+                </SelectTrigger>
+                <SelectContent>
+                  {reasons.map((r) => (
+                    <SelectItem key={r} value={r}>
+                      {r}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </div>
+          )}
+
+          {isOther && (
+            <div className="rounded-lg border border-blue-100 bg-blue-50 p-3 text-xs text-blue-800">
+              Please specify the fraud reason in the Comments / Investigation
+              Notes below.
+            </div>
+          )}
+
+          {/* Customer Contact Status */}
           <div>
             <label className="block text-sm font-medium text-gray-800 mb-2">
-              Choose a Reason<span className="text-red-500">*</span>
+              Customer Contact Status<span className="text-red-500">*</span>
             </label>
-            <Select value={reason} onValueChange={setReason}>
+            <Select value={contactStatus} onValueChange={setContactStatus}>
               <SelectTrigger className="w-full border-gray-300 rounded-lg h-11 px-3">
-                <SelectValue placeholder="Choose a reason from here..." />
+                <SelectValue placeholder="Choose the contact status..." />
               </SelectTrigger>
               <SelectContent>
-                <SelectItem value="suspicious-activity">
-                  Suspicious Activity Pattern
+                <SelectItem value="contacted">Contacted</SelectItem>
+                <SelectItem value="attempted-no-response">
+                  Attempted – No Response
                 </SelectItem>
-                <SelectItem value="unauthorized-transaction">
-                  Unauthorized Transaction
-                </SelectItem>
-                <SelectItem value="customer-complaint">
-                  Customer Complaint
-                </SelectItem>
-                <SelectItem value="risk-score">High Risk Score</SelectItem>
-                <SelectItem value="velocity-check">
-                  Velocity Check Failed
-                </SelectItem>
-                <SelectItem value="blacklist-match">Blacklist Match</SelectItem>
-                <SelectItem value="device-fingerprint">
-                  Device Fingerprint Mismatch
-                </SelectItem>
-                <SelectItem value="geolocation">Unusual Geolocation</SelectItem>
-                <SelectItem value="amount-threshold">
-                  Amount Threshold Exceeded
-                </SelectItem>
-                <SelectItem value="manual-review">
-                  Manual Review Decision
-                </SelectItem>
+                <SelectItem value="not-contacted">Not Contacted</SelectItem>
               </SelectContent>
             </Select>
           </div>
 
-          {/* Notes */}
+          {/* Comments / Investigation Notes */}
           <div>
-            <label className="block text-sm font-medium text-gray-800 mb-3">
-              Additional Note
+            <label className="block text-sm font-medium text-gray-800 mb-2">
+              Comments / Investigation Notes
             </label>
-            <div className="flex space-x-2 mb-4">
-              <Button
-                variant="outline"
-                size="sm"
-                className={`rounded-full px-4 py-1 text-sm ${noteType === "text" ? "bg-gray-200" : ""}`}
-                onClick={() => setNoteType("text")}
-              >
-                Text Note
-              </Button>
-              <Button
-                variant="outline"
-                size="sm"
-                className={`rounded-full px-4 py-1 text-sm ${noteType === "voice" ? "bg-gray-200" : ""}`}
-                onClick={() => setNoteType("voice")}
-              >
-                Voice Note
-              </Button>
-            </div>
-
-            {noteType === "text" && (
-              <textarea
-                className="w-full p-3 border border-gray-300 rounded-lg resize-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
-                rows={3}
-                placeholder="Add your notes here..."
-                value={textNote}
-                onChange={(e) => setTextNote(e.target.value)}
-              />
-            )}
-
-            {noteType === "voice" && (
-              <div className="w-full p-8 border-2 border-dashed border-gray-300 rounded-lg text-center text-gray-500">
-                <div className="mb-2 text-xl">🎤</div>
-                <p className="text-sm">
-                  Voice note recording feature would be here
-                </p>
-              </div>
-            )}
+            <textarea
+              className="w-full p-3 border border-gray-300 rounded-lg resize-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
+              rows={3}
+              placeholder="Add your investigation notes here..."
+              value={textNote}
+              onChange={(e) => setTextNote(e.target.value)}
+            />
           </div>
         </div>
 
@@ -170,7 +194,7 @@ export default function MarkFraudModal({
         <div className="px-6 py-4  flex justify-end">
           <Button
             onClick={handleSubmit}
-            disabled={!fraudType || !reason}
+            disabled={!canSubmit}
             className="bg-gray-600 hover:bg-gray-700 disabled:bg-gray-300 disabled:cursor-not-allowed text-white rounded-lg px-6 py-2 flex items-center space-x-2"
           >
             <span>Mark as Fraud</span>

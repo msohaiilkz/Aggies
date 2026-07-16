@@ -5,8 +5,19 @@ import { Badge } from "@/components/ui/badge";
 import { X, ChevronDown, AlertTriangle, Wallet, Loader2, RefreshCw } from "lucide-react";
 import { DateRange } from "react-day-picker";
 import MarkFraudModal from "@/components/MarkFraudModalProps";
-import MarkFalsePositiveModal from "@/components/MarkFalsePositiveModal";
-import DiscardAlertModal from "@/components/DiscardAlertModal";
+import MovePendingContactModal from "@/components/MovePendingContactModal";
+import MarkNotFraudModal from "@/components/MarkNotFraudModal";
+import { sectionsForRule, type SectionKey } from "@/lib/alert-field-config";
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+} from "@/components/ui/alert-dialog";
 import { DatePickerWithRange } from "@/components/date-range-picker";
 import {
   DropdownMenu,
@@ -1365,19 +1376,23 @@ export default function CustomerDetailsModal({
   onClose,
   onAction,
   alertStatus,
+  rule,
 }: {
   customerId: string | null;
   isOpen: boolean;
   onClose: () => void;
   onAction?: (alertId: string, action: string, data?: any) => void;
   alertStatus?: string;
+  rule?: number;
 }) {
   const { toast } = useToast();
+  // Data-segregation: which detail sections this alert's rule shows.
+  const visibleSections = sectionsForRule(rule);
+  const showSection = (s: SectionKey) => visibleSections.includes(s);
   const [isMarkFraudModalOpen, setIsMarkFraudModalOpen] = useState(false);
-  const [isFalsePositiveModalOpen, setIsFalsePositiveModalOpen] =
-    useState(false);
-  const [isDiscardModalOpen, setIsDiscardModalOpen] = useState(false);
-  const [isSuspended, setIsSuspended] = useState(false);
+  const [isPendingModalOpen, setIsPendingModalOpen] = useState(false);
+  const [isNotFraudModalOpen, setIsNotFraudModalOpen] = useState(false);
+  const [isSuspendConfirmOpen, setIsSuspendConfirmOpen] = useState(false);
   const [activeDetailTab, setActiveDetailTab] = useState("all");
   const [showMoreInfo, setShowMoreInfo] = useState(false);
   const [isHistoryLoading, setIsHistoryLoading] = useState(false);
@@ -1515,48 +1530,46 @@ export default function CustomerDetailsModal({
     setIsMarkFraudModalOpen(false);
   };
 
-  const handleFalsePositiveSubmit = (data: {
-    connection: "connected" | "not_connected";
-    note: string;
+  // First button: move the alert to the Pending Customer Contact queue.
+  const handlePendingSubmit = (data: {
+    contactAttempt: string;
+    comments: string;
   }) => {
-    setIsFalsePositiveModalOpen(false);
-
-    if (data.connection === "connected") {
-      // Customer reached -> resolve alert as a genuine false positive.
-      console.log("Customer Connected: Alert marked as false positive.", data);
-      if (onAction && customerId)
-        onAction(customerId, "CONTACTED", { note: data.note });
-      toast({
-        title: "Marked as False Positive",
-        description: "Customer was contacted. The alert has been resolved.",
-      });
-      onClose();
-    } else {
-      // Customer could not be reached -> escalate and mark as fraud with the
-      // analyst's reason attached.
-      console.log("Customer Not Connected: Escalating alert to fraud.", data);
-      if (onAction && customerId)
-        onAction(customerId, "FRAUD", {
-          source: "false-positive-not-connected",
-          note: data.note,
-        });
-      toast({
-        title: "Escalated to Fraud",
-        description:
-          "Customer could not be contacted. The alert has been marked as fraud.",
-        variant: "destructive",
-      });
-      onClose();
-    }
+    setIsPendingModalOpen(false);
+    console.log("Moved to Pending Contact:", { customerId, ...data });
+    if (onAction && customerId) onAction(customerId, "NOT_CONTACTED", data);
+    toast({
+      title: "Moved to Pending Customer Contact",
+      description:
+        "Alert moved to the Pending Contact queue. It will be requeued in 30 minutes.",
+    });
+    onClose();
   };
 
-  const handleDiscardSubmit = (note: string) => {
-    setIsDiscardModalOpen(false);
-    console.log("Alert discarded by analyst:", { customerId, note });
-    if (onAction && customerId) onAction(customerId, "DISCARDED", { note });
+  // Second button: resolve the alert as Not Fraud.
+  const handleNotFraudSubmit = (data: {
+    contactStatus: string;
+    comments: string;
+  }) => {
+    setIsNotFraudModalOpen(false);
+    console.log("Marked as Not Fraud:", { customerId, ...data });
+    if (onAction && customerId) onAction(customerId, "CONTACTED", data);
     toast({
-      title: "Alert Discarded",
-      description: "The alert has been discarded and marked in the status.",
+      title: "Marked as Not Fraud",
+      description: "The alert has been resolved as not fraud.",
+    });
+    onClose();
+  };
+
+  // Fourth action: suspend the customer's account.
+  const handleSuspendConfirm = () => {
+    setIsSuspendConfirmOpen(false);
+    console.log("Account suspended:", customerId);
+    if (onAction && customerId) onAction(customerId, "SUSPENDED");
+    toast({
+      title: "Account Suspended",
+      description: "The customer's account has been suspended.",
+      variant: "destructive",
     });
     onClose();
   };
@@ -1674,7 +1687,9 @@ export default function CustomerDetailsModal({
             </p>
           </div>
           <div className="flex flex-wrap items-center gap-2">
-            {alertStatus === "FRAUD" || alertStatus === "DISCARDED" ? (
+            {["FRAUD", "DISCARDED", "RESOLVED", "SUSPENDED"].includes(
+              alertStatus ?? "",
+            ) ? (
               <Button
                 size="sm"
                 className="bg-blue-600 text-white hover:bg-blue-700"
@@ -1690,30 +1705,26 @@ export default function CustomerDetailsModal({
                 <Button
                   variant="outline"
                   size="sm"
+                  className="text-orange-700 border-orange-200 hover:bg-orange-50"
+                  onClick={() => setIsSuspendConfirmOpen(true)}
+                >
+                  Suspend Account
+                </Button>
+                <Button
+                  variant="outline"
+                  size="sm"
                   className="text-gray-600 hover:bg-gray-100"
-                  onClick={() => setIsDiscardModalOpen(true)}
+                  onClick={() => setIsPendingModalOpen(true)}
                 >
-                  Discard
+                  Move to Pending Contact
                 </Button>
                 <Button
                   variant="outline"
                   size="sm"
-                  className="text-gray-600"
-                  onClick={() => setIsFalsePositiveModalOpen(true)}
+                  className="text-green-700 border-green-200 hover:bg-green-50"
+                  onClick={() => setIsNotFraudModalOpen(true)}
                 >
-                  Mark as False Positive
-                </Button>
-                <Button
-                  variant="outline"
-                  size="sm"
-                  className={
-                    isSuspended
-                      ? "bg-red-600 text-white border-red-600 hover:bg-red-700 hover:text-white font-bold"
-                      : "text-red-600 border-red-200 hover:bg-red-50"
-                  }
-                  onClick={() => setIsSuspended(true)}
-                >
-                  {isSuspended ? "Suspended" : "Suspend Account"}
+                  Mark as Not Fraud
                 </Button>
                 <Button
                   size="sm"
@@ -1840,6 +1851,7 @@ export default function CustomerDetailsModal({
           </Card>
 
           {/* Alert on Transactions */}
+          {showSection("transaction") && (
           <Card className="overflow-hidden border-gray-100 shadow-sm">
             <CardHeader
               className="cursor-pointer hover:bg-gray-50 transition-all py-4 group"
@@ -1919,6 +1931,7 @@ export default function CustomerDetailsModal({
               </CardContent>
             )}
           </Card>
+          )}
 
           {/* Previous Attacks */}
           <Card className="overflow-hidden border-gray-100 shadow-sm">
@@ -2027,6 +2040,7 @@ export default function CustomerDetailsModal({
           </Card>
 
           {/* Transaction History */}
+          {showSection("transaction") && (
           <Card className="overflow-hidden border-gray-100 shadow-sm">
             <CardHeader
               className="cursor-pointer hover:bg-gray-50 transition-colors py-4 group"
@@ -2196,8 +2210,55 @@ export default function CustomerDetailsModal({
               </CardContent>
             )}
           </Card>
+          )}
+
+          {/* Account Activity Pattern */}
+          {showSection("activity") && (
+            <Card className="overflow-hidden border-gray-100 shadow-sm">
+              <CardHeader className="py-4">
+                <CardTitle className="text-lg">
+                  Account Activity Pattern
+                </CardTitle>
+              </CardHeader>
+              <CardContent className="p-0">
+                <div className="overflow-x-auto">
+                  <table className="w-full text-left min-w-[500px]">
+                    <tbody className="divide-y divide-gray-100">
+                      {[
+                        ["Historical Active Days (90d)", "72"],
+                        ["Historical Avg Transactions / Day", "4.3"],
+                        ["Historical Avg Daily Spend", "PKR 38,500"],
+                        ["Historical Avg Transaction Amount", "PKR 12,200"],
+                        ["Current Transaction Count", "9"],
+                        ["Current Total Amount", "PKR 231,000"],
+                        ["Current Avg Transaction Amount", "PKR 25,600"],
+                        ["Historical Mean Time Active (90d)", "6.2 hrs"],
+                        ["Current Mean Time", "3.4 hrs"],
+                        ["Current Speed Ratio", "2.1x"],
+                        ["Current Speed Ratio Flag", "HIGH"],
+                      ].map(([label, value]) => (
+                        <tr key={label} className="hover:bg-gray-50">
+                          <td className="p-3 text-sm text-gray-600">{label}</td>
+                          <td className="p-3 text-sm font-semibold text-gray-900">
+                            {label === "Current Speed Ratio Flag" ? (
+                              <span className="px-2 py-0.5 rounded-full text-[10px] font-bold uppercase bg-red-100 text-red-700">
+                                {value}
+                              </span>
+                            ) : (
+                              value
+                            )}
+                          </td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
+              </CardContent>
+            </Card>
+          )}
 
           {/* List of All Device */}
+          {showSection("device") && (
           <Card className="overflow-hidden border-gray-100 shadow-sm">
             <CardHeader
               className="cursor-pointer hover:bg-gray-50 transition-colors py-4 group"
@@ -2286,8 +2347,10 @@ export default function CustomerDetailsModal({
               </CardContent>
             )}
           </Card>
+          )}
 
           {/* List of All Customer Added Beneficiaries */}
+          {showSection("beneficiary") && (
           <Card className="overflow-hidden border-gray-100 shadow-sm">
             <CardHeader
               className="cursor-pointer hover:bg-gray-50 transition-colors py-4 group"
@@ -2439,8 +2502,10 @@ export default function CustomerDetailsModal({
               </CardContent>
             )}
           </Card>
+          )}
 
           {/* New Transaction Details Tabs */}
+          {showSection("transaction") && (
           <Card className="overflow-hidden">
             <CardHeader
               className="px-6 py-4 cursor-pointer hover:bg-gray-50 transition-colors group"
@@ -2598,8 +2663,10 @@ export default function CustomerDetailsModal({
               </CardContent>
             )}
           </Card>
+          )}
 
           {/* List of All Customer Accounts */}
+          {showSection("account") && (
           <Card className="overflow-hidden border-gray-100 shadow-sm">
             <CardHeader
               className="cursor-pointer hover:bg-gray-50 transition-colors py-4 group"
@@ -2670,6 +2737,7 @@ export default function CustomerDetailsModal({
               </CardContent>
             )}
           </Card>
+          )}
 
           {/* List of All Last 10 Transactions section hidden */}
         </div>
@@ -2682,19 +2750,44 @@ export default function CustomerDetailsModal({
         onSubmit={handleFraudSubmit}
       />
 
-      {/* Mark as False Positive Modal */}
-      <MarkFalsePositiveModal
-        isOpen={isFalsePositiveModalOpen}
-        onClose={() => setIsFalsePositiveModalOpen(false)}
-        onSubmit={handleFalsePositiveSubmit}
+      {/* Move to Pending Contact Modal */}
+      <MovePendingContactModal
+        isOpen={isPendingModalOpen}
+        onClose={() => setIsPendingModalOpen(false)}
+        onSubmit={handlePendingSubmit}
       />
 
-      {/* Discard Alert Modal */}
-      <DiscardAlertModal
-        isOpen={isDiscardModalOpen}
-        onClose={() => setIsDiscardModalOpen(false)}
-        onSubmit={handleDiscardSubmit}
+      {/* Mark as Not Fraud Modal */}
+      <MarkNotFraudModal
+        isOpen={isNotFraudModalOpen}
+        onClose={() => setIsNotFraudModalOpen(false)}
+        onSubmit={handleNotFraudSubmit}
       />
+
+      {/* Suspend Account confirmation */}
+      <AlertDialog
+        open={isSuspendConfirmOpen}
+        onOpenChange={setIsSuspendConfirmOpen}
+      >
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>Suspend this account?</AlertDialogTitle>
+            <AlertDialogDescription>
+              This will suspend {customer?.name || "the customer"}'s account. The
+              alert status will change to <strong>Account Suspended</strong>.
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel>Cancel</AlertDialogCancel>
+            <AlertDialogAction
+              onClick={handleSuspendConfirm}
+              className="bg-orange-600 hover:bg-orange-700"
+            >
+              Suspend Account
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
     </div>
   );
 }

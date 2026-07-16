@@ -28,6 +28,7 @@ import ForceCloseModal from "@/components/ForceCloseModal";
 import { useToast } from "@/hooks/use-toast";
 import { getAlertOverrides, setAlertOverride } from "@/hooks/use-alert-status";
 import { getReassignments, REASSIGN_EVENT } from "@/hooks/use-reassignments";
+import { ruleIndexFor } from "@/lib/alert-field-config";
 import { useSearch } from "@/hooks/use-search";
 import {
   AlertDialog,
@@ -462,6 +463,7 @@ export default function FraudDashboard({
       FRAUD: "FRAUD",
       OPEN: "OPEN",
       DISCARDED: "DISCARDED",
+      SUSPENDED: "SUSPENDED",
     };
     const newStatus = statusMap[action];
 
@@ -492,19 +494,26 @@ export default function FraudDashboard({
     // they can see what each analyst is working on and what was actioned.
     if (!isExecutive) {
       if (statusFilter === "CLOSED_ALERTS") {
-        if (alert.status !== "FRAUD" && alert.status !== "DISCARDED")
+        // Closed = Fraud Confirmed, Not Fraud, Discarded, Account Suspended
+        if (
+          alert.status !== "FRAUD" &&
+          alert.status !== "DISCARDED" &&
+          alert.status !== "RESOLVED" &&
+          alert.status !== "SUSPENDED"
+        )
           return false;
       } else if (statusFilter && alert.status !== statusFilter) {
         return false;
       }
 
-      // Normal view: hide resolved, fraud, discarded, not_contacted
+      // Normal (active) view: hide anything that has reached a terminal/parked state
       if (
         !statusFilter &&
         (alert.status === "RESOLVED" ||
           alert.status === "FRAUD" ||
           alert.status === "DISCARDED" ||
-          alert.status === "NOT_CONTACTED")
+          alert.status === "NOT_CONTACTED" ||
+          alert.status === "SUSPENDED")
       )
         return false;
     }
@@ -627,6 +636,26 @@ export default function FraudDashboard({
     });
   };
 
+  // Main-page fields derived from the alert source (per the segregation sheet:
+  // Engine Type + Rule Number are separate columns).
+  const engineTypeOf = (src = "") =>
+    /rule\s*#/i.test(src) ? "Rule Based" : /ai model/i.test(src) ? "AI Model" : "—";
+  const ruleNumberOf = (src = "") => {
+    const m = src.match(/Rule\s*#?\s*(\d+)/i);
+    if (m) return `Rule #${m[1]}`;
+    const ai = src.match(/AI Model\s*\((.+)\)/i);
+    return ai ? ai[1].trim() : "—";
+  };
+  const formatAlertDate = (iso: string) =>
+    new Date(iso).toLocaleString("en-PK", {
+      day: "2-digit",
+      month: "short",
+      year: "numeric",
+      hour: "2-digit",
+      minute: "2-digit",
+      hour12: true,
+    });
+
   const renderAlertRow = (
     alert: (typeof filteredAlerts)[number],
     isChild = false,
@@ -638,6 +667,8 @@ export default function FraudDashboard({
     // Reassigned-away alerts are disabled for the analyst.
     const isReassigned =
       !isExecutive && reassignedCustomers.includes(alert.customerName);
+    // Child (expanded) rows are more compact than primary rows.
+    const cellPad = isChild ? "px-4 py-2" : "p-4";
     return (
       <tr
         key={alert.id}
@@ -651,12 +682,16 @@ export default function FraudDashboard({
             ? "bg-gray-50 opacity-50 cursor-not-allowed"
             : `cursor-pointer ${
                 isChild
-                  ? "bg-slate-50/70 hover:bg-slate-100"
+                  ? "bg-indigo-50/50 hover:bg-indigo-50"
                   : "bg-white hover:bg-gray-50"
               }`
         }`}
       >
-        <td className={`p-4 ${isChild ? "border-l-4 border-blue-300" : ""}`}>
+        <td
+          className={`${cellPad} ${
+            isChild ? "border-l-4 border-indigo-300 pl-6" : ""
+          }`}
+        >
           <input
             type="checkbox"
             checked={selectedAlerts.includes(alert.id)}
@@ -667,13 +702,17 @@ export default function FraudDashboard({
             aria-label={`Select alert ${alert.id}`}
           />
         </td>
-        <td className="p-4 text-sm font-mono font-bold text-blue-600 hover:text-blue-800">
+        <td
+          className={`${cellPad} text-sm font-mono font-bold text-blue-600 hover:text-blue-800`}
+        >
           <span className={isChild ? "pl-4 inline-block" : ""}>
             {buildAlertId(alert, displayNumber ?? 1)}
           </span>
         </td>
-        <td className="p-4 font-medium text-gray-900">{alert.customerName}</td>
-        <td className="p-4">
+        <td className={`${cellPad} font-medium text-gray-900`}>
+          {alert.customerName}
+        </td>
+        <td className={cellPad}>
           <div className="space-y-1">
             <div className="font-mono font-bold text-sm text-gray-900">
               {alert.globalId}
@@ -683,34 +722,36 @@ export default function FraudDashboard({
             </div>
           </div>
         </td>
-        <td className="p-4 text-sm text-gray-700">{alert.alertSource}</td>
-        <td className="p-4 text-center">
+        <td className={cellPad}>
+          <span
+            className={`inline-block rounded-full px-2.5 py-1 text-xs font-semibold ${
+              engineTypeOf(alert.alertSource) === "AI Model"
+                ? "bg-purple-100 text-purple-700"
+                : "bg-blue-100 text-blue-700"
+            }`}
+          >
+            {engineTypeOf(alert.alertSource)}
+          </span>
+        </td>
+        <td className={`${cellPad} text-sm font-medium text-gray-800`}>
+          Rule {ruleIndexFor(alert.alertSource)}
+        </td>
+        <td className={`${cellPad} text-sm text-gray-500 whitespace-nowrap`}>
+          {formatAlertDate(alert.createdAt)}
+        </td>
+        <td className={`${cellPad} text-center`}>
           {isReassigned ? (
             <Badge className="bg-purple-500 text-white hover:bg-purple-600 border-0 rounded-full text-xs px-3 py-1">
               Reassigned
             </Badge>
-          ) : alert.status === "FRAUD" ? (
-            <Badge className="bg-red-500 text-white hover:bg-red-600 border-0 rounded-full text-xs px-3 py-1">
-              Fraud
-            </Badge>
-          ) : alert.status === "DISCARDED" ? (
-            <Badge className="bg-gray-500 text-white hover:bg-gray-600 border-0 rounded-full text-xs px-3 py-1">
-              Discarded
-            </Badge>
-          ) : alert.status === "RESOLVED" ? (
-            <Badge className="bg-green-500 text-white hover:bg-green-600 border-0 rounded-full text-xs px-3 py-1">
-              Resolved
-            </Badge>
           ) : (
-            <Badge className="bg-slate-200 text-slate-700 hover:bg-slate-300 border-0 rounded-full text-xs px-3 py-1">
-              Open
-            </Badge>
+            statusBadge(alert.status)
           )}
         </td>
-        <td className="p-4 text-center font-medium text-gray-900">
+        <td className={`${cellPad} text-center font-medium text-gray-900`}>
           {extraCount > 0 ? group!.children.length + 1 : alert.alertCount}
         </td>
-        <td className="p-4 text-right">
+        <td className={`${cellPad} text-right`}>
           {extraCount > 0 ? (
             <button
               type="button"
@@ -764,30 +805,36 @@ export default function FraudDashboard({
   const statusBadge = (status: string) => {
     if (status === "FRAUD")
       return (
-        <Badge className="bg-red-500 text-white hover:bg-red-600 border-0 rounded-full text-xs px-3 py-1">
-          Fraud
+        <Badge className="bg-red-500 text-white hover:bg-red-600 border-0 rounded-full text-xs px-3 py-1 whitespace-nowrap">
+          Closed (Fraud Confirmed)
         </Badge>
       );
     if (status === "DISCARDED")
       return (
-        <Badge className="bg-gray-500 text-white hover:bg-gray-600 border-0 rounded-full text-xs px-3 py-1">
+        <Badge className="bg-gray-500 text-white hover:bg-gray-600 border-0 rounded-full text-xs px-3 py-1 whitespace-nowrap">
           Discarded
         </Badge>
       );
     if (status === "RESOLVED")
       return (
-        <Badge className="bg-green-500 text-white hover:bg-green-600 border-0 rounded-full text-xs px-3 py-1">
-          Resolved
+        <Badge className="bg-green-500 text-white hover:bg-green-600 border-0 rounded-full text-xs px-3 py-1 whitespace-nowrap">
+          Closed (Not Fraud)
         </Badge>
       );
     if (status === "NOT_CONTACTED")
       return (
-        <Badge className="bg-amber-500 text-white hover:bg-amber-600 border-0 rounded-full text-xs px-3 py-1">
-          Pending Contact
+        <Badge className="bg-amber-500 text-white hover:bg-amber-600 border-0 rounded-full text-xs px-3 py-1 whitespace-nowrap">
+          Pending Customer Contact
+        </Badge>
+      );
+    if (status === "SUSPENDED")
+      return (
+        <Badge className="bg-orange-600 text-white hover:bg-orange-700 border-0 rounded-full text-xs px-3 py-1 whitespace-nowrap">
+          Account Suspended
         </Badge>
       );
     return (
-      <Badge className="bg-slate-200 text-slate-700 hover:bg-slate-300 border-0 rounded-full text-xs px-3 py-1">
+      <Badge className="bg-slate-200 text-slate-700 hover:bg-slate-300 border-0 rounded-full text-xs px-3 py-1 whitespace-nowrap">
         Open
       </Badge>
     );
@@ -813,7 +860,10 @@ export default function FraudDashboard({
   };
 
   const isClosedStatus = (status: string) =>
-    status === "FRAUD" || status === "DISCARDED" || status === "RESOLVED";
+    status === "FRAUD" ||
+    status === "DISCARDED" ||
+    status === "RESOLVED" ||
+    status === "SUSPENDED";
 
   // Calculate stats from filtered data
   const stats = {
@@ -1271,7 +1321,7 @@ export default function FraudDashboard({
           {/* Alerts Table */}
           {!isExecutive && (
           <div className="overflow-x-auto border rounded-xl shadow-sm">
-            <table className="w-full min-w-[700px] bg-white">
+            <table className="w-full min-w-[980px] bg-white">
               <thead>
                 <tr className="bg-gray-50 border-b">
                   <th className="w-12 p-4 text-left">
@@ -1298,7 +1348,13 @@ export default function FraudDashboard({
                     CIF Number
                   </th>
                   <th className="p-4 text-left font-medium text-gray-900 text-sm">
-                    Alert Source
+                    Engine Type
+                  </th>
+                  <th className="p-4 text-left font-medium text-gray-900 text-sm">
+                    Rule Number
+                  </th>
+                  <th className="p-4 text-left font-medium text-gray-900 text-sm">
+                    Date
                   </th>
                   {/* <th className="p-4 text-left font-medium text-gray-900 text-sm">
                     Alert Amount
@@ -1323,7 +1379,7 @@ export default function FraudDashboard({
               <tbody>
                 {filteredAlerts.length === 0 ? (
                   <tr>
-                    <td colSpan={8} className="p-8 text-center text-gray-500">
+                    <td colSpan={10} className="p-8 text-center text-gray-500">
                       No alerts found matching your criteria
                     </td>
                   </tr>
@@ -1359,7 +1415,7 @@ export default function FraudDashboard({
                         {isExpanded && remaining > 0 && (
                           <tr className="border-b bg-slate-50/70">
                             <td className="border-l-4 border-blue-300 p-0" />
-                            <td colSpan={7} className="px-4 py-3">
+                            <td colSpan={9} className="px-4 py-3">
                               <button
                                 type="button"
                                 onClick={() => showMoreInGroup(alert.id)}
@@ -1450,6 +1506,9 @@ export default function FraudDashboard({
         onClose={closeModal}
         onAction={handleAlertAction}
         alertStatus={alerts.find((a) => a.id === selectedCustomerId)?.status}
+        rule={ruleIndexFor(
+          alerts.find((a) => a.id === selectedCustomerId)?.alertSource,
+        )}
       />
       <UnreviewedAccountsModal
         open={unreviewedModalOpen}
