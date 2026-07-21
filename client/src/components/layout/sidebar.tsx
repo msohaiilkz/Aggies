@@ -1,7 +1,6 @@
 import { Link, useLocation } from "wouter";
 import { useAuth } from "@/hooks/use-auth";
 import {
-  Settings,
   Home,
   AlertTriangle,
   Ban,
@@ -25,6 +24,7 @@ import {
   ChevronDown,
   ClipboardList,
   Layers,
+  KeyRound,
 } from "lucide-react";
 
 import { cn } from "@/lib/utils";
@@ -51,27 +51,22 @@ export function Sidebar({ isOpen, setIsOpen }: SidebarProps) {
       roles: ["BUSINESS_HEAD", "ANALYST", "SUPER_EXECUTIVE"],
     },
     {
-      name: "File Upload",
+      name: "Files",
       href: "/files",
       icon: FolderUp,
       roles: ["BUSINESS_HEAD", "SUPER_EXECUTIVE"],
     },
     {
-      name: "Management",
-      icon: Shield,
+      name: "Alert Assignments",
+      href: "/alert-assignments",
+      icon: ClipboardList,
       roles: ["BUSINESS_HEAD", "SUPER_EXECUTIVE"],
-      children: [
-        {
-          name: "Team Management",
-          href: "/team-management",
-          roles: ["BUSINESS_HEAD", "SUPER_EXECUTIVE"],
-        },
-        {
-          name: "Case Management",
-          href: "/case-management",
-          roles: ["BUSINESS_HEAD", "SUPER_EXECUTIVE"],
-        },
-      ],
+    },
+    {
+      name: "User Management",
+      href: "/team-management",
+      icon: UsersRound,
+      roles: ["BUSINESS_HEAD", "SUPER_EXECUTIVE"],
     },
     {
       name: "Super Admin",
@@ -79,12 +74,17 @@ export function Sidebar({ isOpen, setIsOpen }: SidebarProps) {
       icon: ShieldCheck,
       roles: ["SUPER_EXECUTIVE"],
     },
-    { name: "All Accounts", icon: UsersRound, roles: ["ANALYST"] }, //href: "/accounts",
-    { name: "Frauds", icon: Ban, roles: ["BUSINESS_HEAD", "SUPER_EXECUTIVE"] }, //href: "/frauds",
+    {
+      name: "File Upload",
+      href: "/files",
+      icon: FolderUp,
+      roles: ["ANALYST"],
+    },
+    { name: "Frauds", icon: Ban, roles: [] }, //href: "/frauds",
     {
       name: "Alerts",
       icon: AlertTriangle,
-      roles: ["BUSINESS_HEAD", "SUPER_EXECUTIVE"],
+      roles: [],
     }, // href: "/alerts",
     {
       name: "Reports & Analysis",
@@ -101,8 +101,19 @@ export function Sidebar({ isOpen, setIsOpen }: SidebarProps) {
     {
       name: "Integrations",
       icon: Waypoints,
-      roles: ["BUSINESS_HEAD", "SUPER_EXECUTIVE"],
+      roles: [],
     }, //href: "/integrations",
+    {
+      name: "Channel",
+      icon: Layers,
+      roles: ["ANALYST"],
+      children: [
+        { name: "All Alert", href: "/category/All", roles: ["ANALYST"] },
+        { name: "Digital", href: "/category/Digital", roles: ["ANALYST"] },
+        { name: "ATM", href: "/category/ATM", roles: ["ANALYST"] },
+        { name: "E-Commerce", href: "/category/E-Commerce", roles: ["ANALYST"] },
+      ],
+    },
     {
       name: "Closed/Fraud Alerts",
       href: "/category/Closed-Alerts",
@@ -110,37 +121,10 @@ export function Sidebar({ isOpen, setIsOpen }: SidebarProps) {
       roles: ["ANALYST", "BUSINESS_HEAD", "SUPER_EXECUTIVE"],
     },
     {
-      name: "Channel",
-      icon: Layers,
+      name: "Change Password",
+      href: "/change-password",
+      icon: KeyRound,
       roles: ["ANALYST"],
-      children: [
-        { name: "All Alert", href: "/category/All", roles: ["ANALYST"] },
-        {
-          name: "Digital",
-          roles: ["ANALYST"],
-          children: [
-            { name: "FT, Raast", href: "/category/FT-Raast", roles: ["ANALYST"] },
-            { name: "IBFT", href: "/category/IBFT", roles: ["ANALYST"] },
-            { name: "Withdrawal", href: "/category/Withdrawal", roles: ["ANALYST"] },
-          ],
-        },
-        {
-          name: "ATM",
-          roles: ["ANALYST"],
-          children: [
-            { name: "ATM On (On-us)", href: "/category/ATM-On-Us", roles: ["ANALYST"] },
-            { name: "ATM Off (Of-us)", href: "/category/ATM-Of-Us", roles: ["ANALYST"] },
-          ],
-        },
-        {
-          name: "E-Commerce",
-          roles: ["ANALYST"],
-          children: [
-            { name: "E-Commerce", href: "/category/E-Commerce", roles: ["ANALYST"] },
-            { name: "POS", href: "/category/POS", roles: ["ANALYST"] },
-          ],
-        },
-      ],
     },
   ];
 
@@ -273,18 +257,12 @@ export function Sidebar({ isOpen, setIsOpen }: SidebarProps) {
           {/* Navigation - Scrollable */}
           <nav className="flex-1 overflow-y-auto p-4 space-y-1 custom-scrollbar">
             {navigation
-              .filter((item) => item.roles.includes(user?.role ?? ""))
-              .map((item) => renderItem(item, 0))}
+              .filter((item: any) => item.roles.includes(user?.role ?? ""))
+              .map((item: any) => renderItem(item, 0))}
           </nav>
 
-          {/* Bottom Settings + User + Logout */}
+          {/* Bottom User + Logout */}
           <div className="p-4 space-y-2 mt-auto shrink-0 border-t border-slate-700/50 bg-[#0F152D]">
-            <button className="w-full flex items-center gap-3 p-2 rounded-lg hover:bg-slate-700 transition-colors">
-              <Settings className="w-5 h-5 text-white" />
-              <span className="text-white text-sm font-medium truncate">
-                Setting
-              </span>
-            </button>
             <div className="w-full flex items-center gap-3 p-2 rounded-lg bg-slate-800">
               <img
                 src={userImage}

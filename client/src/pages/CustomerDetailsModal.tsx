@@ -1673,6 +1673,132 @@ export default function CustomerDetailsModal({
     }
   };
 
+  // An opened (active) alert can't be closed until the analyst performs an
+  // action. Only the action buttons (which call onClose themselves) may close it.
+  const handleAttemptClose = () => {
+    const mustAct = alertStatus === "OPEN" || alertStatus === "ASSIGNED";
+    if (mustAct) {
+      toast({
+        title: "Action Required",
+        description:
+          "You can't close this alert until you perform an action — Mark as Fraud, Mark as Not Fraud, Move to Pending Contact, or Suspend Account.",
+        variant: "destructive",
+      });
+      return;
+    }
+    onClose();
+  };
+
+  // Per the segregation sheet, Rules 2 & 3 show "Previous Attacks" below the
+  // Beneficiaries section; other rules keep it in its default position.
+  const attacksBelowBeneficiaries = rule === 2 || rule === 3;
+  const previousAttacksCard = (
+    <Card className="overflow-hidden border-gray-100 shadow-sm">
+      <CardHeader
+        className="cursor-pointer hover:bg-gray-50 transition-all py-4 group"
+        onClick={handleLoadAttacks}
+      >
+        <div className="flex justify-between items-center">
+          <CardTitle className="text-lg flex items-center gap-3 group-hover:text-blue-600 transition-colors">
+            Previous Attacks, Suspensions or Blocks
+            {isAttacksLoading ? (
+              <Loader2 className="h-5 w-5 animate-spin text-blue-600" />
+            ) : (
+              <ChevronDown className={`h-5 w-5 text-gray-400 transition-transform duration-300 ${isAttacksVisible ? "rotate-180 text-blue-600" : ""}`} />
+            )}
+          </CardTitle>
+          <div className="flex items-center gap-6">
+            <div className="flex gap-3">
+              <div className="bg-red-50 border border-red-100 rounded-xl px-4 py-2 flex items-center gap-3">
+                <div className="bg-red-100 p-2 rounded-lg">
+                  <AlertTriangle className="h-4 w-4 text-red-600" />
+                </div>
+                <div>
+                  <p className="text-[10px] text-red-500 font-bold uppercase tracking-wider leading-none mb-1">
+                    Total Attacks
+                  </p>
+                  <p className="text-xl font-bold text-red-700 leading-none tracking-tight">
+                    {totalAttacks}
+                  </p>
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+      </CardHeader>
+      {(isAttacksLoading || isAttacksVisible) && (
+        <CardContent className={isAttacksLoading ? "py-12" : ""}>
+          {isAttacksLoading ? (
+            <div className="flex flex-col items-center justify-center space-y-4">
+              <div className="h-12 w-12 rounded-full border-4 border-blue-100 border-t-blue-600 animate-spin"></div>
+              <p className="text-sm font-medium text-gray-500 animate-pulse">
+                Retrieving historical security events...
+              </p>
+            </div>
+          ) : (
+            <div className="overflow-x-auto animate-in fade-in slide-in-from-top-2 duration-500">
+              <table className="w-full">
+                <thead>
+                  <tr className="border-b">
+                    <th className="text-left p-3 font-medium text-gray-700">
+                      Type
+                    </th>
+                    <th className="text-left p-3 font-medium text-gray-700">
+                      Date/Time ID
+                    </th>
+                    <th className="text-left p-3 font-medium text-gray-700">
+                      Fraud Type
+                    </th>
+                    <th className="text-left p-3 font-medium text-gray-700">
+                      Amount
+                    </th>
+                    <th className="text-left p-3 font-medium text-gray-700">
+                      Risk Score
+                    </th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {customer.previousAttacks.map((attack, index) => (
+                    <tr key={index} className="border-b">
+                      <td className="p-3">
+                        <Badge
+                          variant="outline"
+                          className={
+                            attack.type === "Suspension" ||
+                            attack.type === "Attack"
+                              ? "bg-red-50 text-red-700 border-red-200 uppercase text-[10px] font-bold"
+                              : "bg-gray-50 text-gray-700 border-gray-200 uppercase text-[10px] font-bold"
+                          }
+                        >
+                          {attack.type}
+                        </Badge>
+                      </td>
+                      <td className="p-3 text-sm">
+                        <div>{attack.date}</div>
+                        <div className="text-gray-600">{attack.time}</div>
+                      </td>
+                      <td className="p-3">{attack.fraudType}</td>
+                      <td className="p-3 font-semibold">
+                        PKR {attack.amount.toLocaleString()}
+                      </td>
+                      <td className="p-3">
+                        <span
+                          className={`font-bold ${getRiskScoreColor(attack.riskScore)}`}
+                        >
+                          {attack.riskScore}%
+                        </span>
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          )}
+        </CardContent>
+      )}
+    </Card>
+  );
+
   return (
     <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4">
       <div className="bg-gray-50 rounded-lg max-w-6xl w-full max-h-[90vh] overflow-y-auto">
@@ -1705,14 +1831,6 @@ export default function CustomerDetailsModal({
                 <Button
                   variant="outline"
                   size="sm"
-                  className="text-orange-700 border-orange-200 hover:bg-orange-50"
-                  onClick={() => setIsSuspendConfirmOpen(true)}
-                >
-                  Suspend Account
-                </Button>
-                <Button
-                  variant="outline"
-                  size="sm"
                   className="text-gray-600 hover:bg-gray-100"
                   onClick={() => setIsPendingModalOpen(true)}
                 >
@@ -1733,9 +1851,22 @@ export default function CustomerDetailsModal({
                 >
                   Mark as Fraud
                 </Button>
+                <Button
+                  variant="outline"
+                  size="sm"
+                  className="text-orange-700 border-orange-200 hover:bg-orange-50"
+                  onClick={() => setIsSuspendConfirmOpen(true)}
+                >
+                  Suspend Account
+                </Button>
               </>
             )}
-            <Button variant="ghost" size="sm" onClick={onClose} className="p-2">
+            <Button
+              variant="ghost"
+              size="sm"
+              onClick={handleAttemptClose}
+              className="p-2"
+            >
               <X className="h-4 w-4" />
             </Button>
           </div>
@@ -1785,7 +1916,7 @@ export default function CustomerDetailsModal({
                   onClick={() => setShowMoreInfo((prev) => !prev)}
                   className="bg-blue-600 hover:bg-blue-700 text-white gap-2 font-bold transition-all shadow-sm shadow-blue-200"
                 >
-                  {showMoreInfo ? "Show Less" : "More"}
+                  {showMoreInfo ? "Show Less" : "Fetch information"}
                   <ChevronDown
                     className={`h-4 w-4 transition-transform duration-300 ${showMoreInfo ? "rotate-180" : ""}`}
                   />
@@ -1933,112 +2064,6 @@ export default function CustomerDetailsModal({
           </Card>
           )}
 
-          {/* Previous Attacks */}
-          <Card className="overflow-hidden border-gray-100 shadow-sm">
-            <CardHeader
-              className="cursor-pointer hover:bg-gray-50 transition-all py-4 group"
-              onClick={handleLoadAttacks}
-            >
-              <div className="flex justify-between items-center">
-                <CardTitle className="text-lg flex items-center gap-3 group-hover:text-blue-600 transition-colors">
-                  Previous Attacks, Suspensions or Blocks
-                  {isAttacksLoading ? (
-                    <Loader2 className="h-5 w-5 animate-spin text-blue-600" />
-                  ) : (
-                    <ChevronDown className={`h-5 w-5 text-gray-400 transition-transform duration-300 ${isAttacksVisible ? "rotate-180 text-blue-600" : ""}`} />
-                  )}
-                </CardTitle>
-                <div className="flex items-center gap-6">
-                  <div className="flex gap-3">
-                    <div className="bg-red-50 border border-red-100 rounded-xl px-4 py-2 flex items-center gap-3">
-                      <div className="bg-red-100 p-2 rounded-lg">
-                        <AlertTriangle className="h-4 w-4 text-red-600" />
-                      </div>
-                      <div>
-                        <p className="text-[10px] text-red-500 font-bold uppercase tracking-wider leading-none mb-1">
-                          Total Attacks
-                        </p>
-                        <p className="text-xl font-bold text-red-700 leading-none tracking-tight">
-                          {totalAttacks}
-                        </p>
-                      </div>
-                    </div>
-                  </div>
-                </div>
-              </div>
-            </CardHeader>
-            {(isAttacksLoading || isAttacksVisible) && (
-              <CardContent className={isAttacksLoading ? "py-12" : ""}>
-                {isAttacksLoading ? (
-                  <div className="flex flex-col items-center justify-center space-y-4">
-                    <div className="h-12 w-12 rounded-full border-4 border-blue-100 border-t-blue-600 animate-spin"></div>
-                    <p className="text-sm font-medium text-gray-500 animate-pulse">
-                      Retrieving historical security events...
-                    </p>
-                  </div>
-                ) : (
-                  <div className="overflow-x-auto animate-in fade-in slide-in-from-top-2 duration-500">
-                    <table className="w-full">
-                      <thead>
-                        <tr className="border-b">
-                          <th className="text-left p-3 font-medium text-gray-700">
-                            Type
-                          </th>
-                          <th className="text-left p-3 font-medium text-gray-700">
-                            Date/Time ID
-                          </th>
-                          <th className="text-left p-3 font-medium text-gray-700">
-                            Fraud Type
-                          </th>
-                          <th className="text-left p-3 font-medium text-gray-700">
-                            Amount
-                          </th>
-                          <th className="text-left p-3 font-medium text-gray-700">
-                            Risk Score
-                          </th>
-                        </tr>
-                      </thead>
-                      <tbody>
-                        {customer.previousAttacks.map((attack, index) => (
-                          <tr key={index} className="border-b">
-                            <td className="p-3">
-                              <Badge
-                                variant="outline"
-                                className={
-                                  attack.type === "Suspension" ||
-                                  attack.type === "Attack"
-                                    ? "bg-red-50 text-red-700 border-red-200 uppercase text-[10px] font-bold"
-                                    : "bg-gray-50 text-gray-700 border-gray-200 uppercase text-[10px] font-bold"
-                                }
-                              >
-                                {attack.type}
-                              </Badge>
-                            </td>
-                            <td className="p-3 text-sm">
-                              <div>{attack.date}</div>
-                              <div className="text-gray-600">{attack.time}</div>
-                            </td>
-                            <td className="p-3">{attack.fraudType}</td>
-                            <td className="p-3 font-semibold">
-                              PKR {attack.amount.toLocaleString()}
-                            </td>
-                            <td className="p-3">
-                              <span
-                                className={`font-bold ${getRiskScoreColor(attack.riskScore)}`}
-                              >
-                                {attack.riskScore}%
-                              </span>
-                            </td>
-                          </tr>
-                        ))}
-                      </tbody>
-                    </table>
-                  </div>
-                )}
-              </CardContent>
-            )}
-          </Card>
-
           {/* Transaction History */}
           {showSection("transaction") && (
           <Card className="overflow-hidden border-gray-100 shadow-sm">
@@ -2138,7 +2163,7 @@ export default function CustomerDetailsModal({
                     }}
                     className="bg-blue-600 hover:bg-blue-700 text-white gap-2 font-bold transition-all shadow-sm shadow-blue-200 disabled:bg-blue-200 disabled:text-white disabled:shadow-none"
                   >
-                    {isTxnDetailsExpanded ? "Show Less" : "More"}
+                    {isTxnDetailsExpanded ? "Show Less" : "Fetch information"}
                     <ChevronDown
                       className={`h-4 w-4 transition-transform duration-300 ${isTxnDetailsExpanded ? "rotate-180" : ""}`}
                     />
@@ -2222,34 +2247,58 @@ export default function CustomerDetailsModal({
               </CardHeader>
               <CardContent className="p-0">
                 <div className="overflow-x-auto">
-                  <table className="w-full text-left min-w-[500px]">
-                    <tbody className="divide-y divide-gray-100">
-                      {[
-                        ["Historical Active Days (90d)", "72"],
-                        ["Historical Avg Transactions / Day", "4.3"],
-                        ["Historical Avg Daily Spend", "PKR 38,500"],
-                        ["Historical Avg Transaction Amount", "PKR 12,200"],
-                        ["Current Transaction Count", "9"],
-                        ["Current Total Amount", "PKR 231,000"],
-                        ["Current Avg Transaction Amount", "PKR 25,600"],
-                        ["Historical Mean Time Active (90d)", "6.2 hrs"],
-                        ["Current Mean Time", "3.4 hrs"],
-                        ["Current Speed Ratio", "2.1x"],
-                        ["Current Speed Ratio Flag", "HIGH"],
-                      ].map(([label, value]) => (
-                        <tr key={label} className="hover:bg-gray-50">
-                          <td className="p-3 text-sm text-gray-600">{label}</td>
-                          <td className="p-3 text-sm font-semibold text-gray-900">
-                            {label === "Current Speed Ratio Flag" ? (
-                              <span className="px-2 py-0.5 rounded-full text-[10px] font-bold uppercase bg-red-100 text-red-700">
-                                {value}
-                              </span>
-                            ) : (
-                              value
-                            )}
+                  <table className="w-full">
+                    <thead>
+                      <tr className="border-b bg-gray-50/50">
+                        {[
+                          "Historical Active Days (90d)",
+                          "Historical Avg Transactions / Day",
+                          "Historical Avg Daily Spend",
+                          "Historical Avg Transaction Amount",
+                          "Current Transaction Count",
+                          "Current Total Amount",
+                          "Current Avg Transaction Amount",
+                          "Historical Mean Time Active (90d)",
+                          "Current Mean Time",
+                          "Current Speed Ratio",
+                          "Current Speed Ratio Flag",
+                        ].map((h) => (
+                          <th
+                            key={h}
+                            className="text-left p-3 font-medium text-gray-700 text-sm whitespace-nowrap uppercase"
+                          >
+                            {h}
+                          </th>
+                        ))}
+                      </tr>
+                    </thead>
+                    <tbody>
+                      <tr className="border-b last:border-0">
+                        {[
+                          "72",
+                          "4.3",
+                          "PKR 38,500",
+                          "PKR 12,200",
+                          "9",
+                          "PKR 231,000",
+                          "PKR 25,600",
+                          "6.2 hrs",
+                          "3.4 hrs",
+                          "2.1x",
+                        ].map((v, i) => (
+                          <td
+                            key={i}
+                            className="p-3 text-sm text-gray-900 whitespace-nowrap"
+                          >
+                            {v}
                           </td>
-                        </tr>
-                      ))}
+                        ))}
+                        <td className="p-3 text-sm whitespace-nowrap">
+                          <span className="px-2 py-0.5 rounded-full text-[10px] font-bold uppercase bg-red-100 text-red-700">
+                            HIGH
+                          </span>
+                        </td>
+                      </tr>
                     </tbody>
                   </table>
                 </div>
@@ -2284,7 +2333,7 @@ export default function CustomerDetailsModal({
                   }}
                   className="bg-blue-600 hover:bg-blue-700 text-white gap-2 font-bold transition-all shadow-sm shadow-blue-200 disabled:bg-blue-200 disabled:text-white disabled:shadow-none"
                 >
-                  {isDeviceDetailsExpanded ? "Show Less" : "More"}
+                  {isDeviceDetailsExpanded ? "Show Less" : "Fetch information"}
                   <ChevronDown
                     className={`h-4 w-4 transition-transform duration-300 ${isDeviceDetailsExpanded ? "rotate-180" : ""}`}
                   />
@@ -2348,6 +2397,9 @@ export default function CustomerDetailsModal({
             )}
           </Card>
           )}
+
+          {/* Previous Attacks — default position (rules 2 & 3 render it below Beneficiaries) */}
+          {!attacksBelowBeneficiaries && previousAttacksCard}
 
           {/* List of All Customer Added Beneficiaries */}
           {showSection("beneficiary") && (
@@ -2442,7 +2494,7 @@ export default function CustomerDetailsModal({
                     }}
                     className="bg-blue-600 hover:bg-blue-700 text-white gap-2 font-bold transition-all shadow-sm shadow-blue-200 disabled:bg-blue-200 disabled:text-white disabled:shadow-none"
                   >
-                    {isBeneficiaryDetailsExpanded ? "Show Less" : "More"}
+                    {isBeneficiaryDetailsExpanded ? "Show Less" : "Fetch information"}
                     <ChevronDown
                       className={`h-4 w-4 transition-transform duration-300 ${isBeneficiaryDetailsExpanded ? "rotate-180" : ""}`}
                     />
@@ -2503,6 +2555,9 @@ export default function CustomerDetailsModal({
             )}
           </Card>
           )}
+
+          {/* Previous Attacks — below Beneficiaries for rules 2 & 3 */}
+          {attacksBelowBeneficiaries && previousAttacksCard}
 
           {/* New Transaction Details Tabs */}
           {showSection("transaction") && (

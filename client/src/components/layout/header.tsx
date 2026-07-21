@@ -1,8 +1,6 @@
 import { useState } from "react";
 import { Button } from "@/components/ui/button";
-import { Input } from "@/components/ui/input";
-import { Search, Menu, ChevronDown, Bell } from "lucide-react";
-import { useSearch } from "@/hooks/use-search";
+import { Menu, ChevronDown, Bell } from "lucide-react";
 import { FaGlobe } from "react-icons/fa";
 import { cn } from "@/lib/utils";
 import {
@@ -32,7 +30,6 @@ export function Header({
   onMenuClick,
 }: HeaderProps) {
   const [isLangOpen, setIsLangOpen] = useState(false);
-  const { query, setQuery, placeholder, searchable } = useSearch();
   const [notifications, setNotifications] = useState<Notification[]>([
     {
       id: "1",
@@ -78,22 +75,8 @@ export function Header({
           </h1>
         </div>
 
-        {/* Page-scoped search — only shown on pages that consume it */}
-        {searchable ? (
-          <div className="relative flex-1 min-w-[180px] max-w-full sm:max-w-sm md:max-w-md">
-            <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 text-slate-400 h-4 w-4" />
-            <Input
-              type="search"
-              placeholder={placeholder}
-              value={query}
-              onChange={(e) => setQuery(e.target.value)}
-              className="pl-10 pr-4 py-2 w-full bg-slate-50 border-gray-200 rounded-lg focus:ring-blue-500/10 focus:border-blue-500"
-              data-testid="input-global-search"
-            />
-          </div>
-        ) : (
-          <div className="flex-1" />
-        )}
+        {/* Top-bar search removed — pages use their own in-page search boxes */}
+        <div className="flex-1" />
 
         {/* Right Section */}
         <div className="flex items-center space-x-4">

@@ -2,6 +2,9 @@
 
 const LIMIT_KEY = "agess_global_alert_limit";
 const ASSIGN_KEY = "agess_alert_assignments";
+const ASSIGN_VERSION_KEY = "agess_alert_assignments_version";
+// Bump when SEED_ALERTS / analyst ids change so old localStorage re-seeds.
+const ASSIGN_VERSION = 4;
 
 export const DEFAULT_GLOBAL_LIMIT = 10;
 export const ALERT_LIMIT_OPTIONS = [5, 10, 15, 20, 30, 50, 100];
@@ -31,17 +34,24 @@ export interface AlertItem {
   assignedTo: string | null; // analyst id
   status?: AlertLifecycleStatus;
   createdAt?: string; // when the alert was generated
+  rule?: number; // fraud rule (1..9) that raised this alert
 }
 
+// These MIRROR the analyst dashboard's 9 alerts exactly (same id, customer,
+// rule, channel and createdAt) so the displayed Alert ID matches across both
+// screens and the executive can search an analyst's alert by its id / CNIC.
+// assignedTo maps to analyst ids in use-analysts.ts (demo-1 = Ahmed Raza,
+// demo-2 = Sana Iqbal).
 const SEED_ALERTS: AlertItem[] = [
-  { id: "AL-1001", alertCode: "P436691BNC140", customerName: "Kelvin Harris", severity: "HIGH", channel: "FT-Raast", amount: 156000, assignedTo: "demo-1", status: "Open" },
-  { id: "AL-1002", alertCode: "P436691BNC141", customerName: "Obaid Mehmood", severity: "MEDIUM", channel: "IBFT", amount: 15000, assignedTo: "demo-2", status: "Open" },
-  { id: "AL-1003", alertCode: "42301-26920823-3", customerName: "Abid Ali", severity: "LOW", channel: "POS", amount: 20000, assignedTo: "demo-1", status: "Closed" },
-  { id: "AL-1004", alertCode: "P436691BNC142", customerName: "Mustafa Mahmood", severity: "HIGH", channel: "E-Commerce", amount: 75000, assignedTo: "demo-4", status: "Open" },
-  { id: "AL-1005", alertCode: "P436691BNC143", customerName: "Kelvin Harris", severity: "HIGH", channel: "FT-Raast", amount: 230000, assignedTo: "demo-2", status: "Reopened" },
-  { id: "AL-1006", alertCode: "A987654XYZ210", customerName: "Ayesha Khan", severity: "HIGH", channel: "ATM-On-Us", amount: 150000, assignedTo: "demo-4", status: "Closed" },
-  { id: "AL-1007", alertCode: "B123456LMN987", customerName: "Zainab Ali", severity: "MEDIUM", channel: "ATM-Of-Us", amount: 50000, assignedTo: "demo-1", status: "Open" },
-  { id: "AL-1008", alertCode: "B1234160MN0123", customerName: "Zaheer Ali", severity: "LOW", channel: "IBFT", amount: 50000, assignedTo: null, status: "Open" },
+  { id: "1", alertCode: "P436691BNC140", customerName: "Kelvin Harris", severity: "HIGH", channel: "FT-Raast", amount: 156000, assignedTo: "demo-1", status: "Open", rule: 1, createdAt: "2025-01-10T10:30:00Z" },
+  { id: "2", alertCode: "42301-26920823-3", customerName: "Obaid Mehmood", severity: "MEDIUM", channel: "IBFT", amount: 15000, assignedTo: "demo-2", status: "Open", rule: 2, createdAt: "2025-01-09T14:20:00Z" },
+  { id: "3", alertCode: "P436691BNC141", customerName: "Abid Ali", severity: "LOW", channel: "POS", amount: 20000, assignedTo: "demo-1", status: "Open", rule: 3, createdAt: "2025-01-08T09:15:00Z" },
+  { id: "4", alertCode: "A987654XYZ210", customerName: "Ayesha Khan", severity: "HIGH", channel: "ATM-On-Us", amount: 95000, assignedTo: "demo-2", status: "Open", rule: 4, createdAt: "2025-01-07T16:45:00Z" },
+  { id: "5", alertCode: "B123456LMN987", customerName: "Zainab Ali", severity: "MEDIUM", channel: "ATM-Of-Us", amount: 50000, assignedTo: "demo-1", status: "Open", rule: 5, createdAt: "2025-01-06T11:30:00Z" },
+  { id: "6", alertCode: "C987654MNO321", customerName: "Fahad Mustafa", severity: "HIGH", channel: "Withdrawal", amount: 500000, assignedTo: "demo-2", status: "Open", rule: 6, createdAt: "2025-01-05T15:45:00Z" },
+  { id: "7", alertCode: "P436691BNC142", customerName: "Salman Ahmed", severity: "HIGH", channel: "E-Commerce", amount: 171450, assignedTo: "demo-1", status: "Open", rule: 7, createdAt: "2025-01-09T08:15:00Z" },
+  { id: "8", alertCode: "P436691BNC143", customerName: "Mustafa Mahmood", severity: "HIGH", channel: "IBFT", amount: 75000, assignedTo: "demo-2", status: "Open", rule: 8, createdAt: "2025-01-07T13:20:00Z" },
+  { id: "9", alertCode: "B123456LM0123", customerName: "Zaheer Ali", severity: "MEDIUM", channel: "FT-Raast", amount: 50000, assignedTo: null, status: "Open", rule: 9, createdAt: "2025-01-08T11:20:00Z" },
 ];
 
 // Deterministic fallback timestamp so backfilled alerts stay stable.
@@ -57,20 +67,16 @@ function withDefaults(list: AlertItem[]): AlertItem[] {
 
 export function getAlerts(): AlertItem[] {
   const existing = localStorage.getItem(ASSIGN_KEY);
-  if (!existing) {
+  const ver = localStorage.getItem(ASSIGN_VERSION_KEY);
+  // Re-seed when missing or the seed version changed (analyst ids updated).
+  if (!existing || ver !== String(ASSIGN_VERSION)) {
     const seeded = withDefaults(SEED_ALERTS);
     localStorage.setItem(ASSIGN_KEY, JSON.stringify(seeded));
+    localStorage.setItem(ASSIGN_VERSION_KEY, String(ASSIGN_VERSION));
     return seeded;
   }
   try {
     const parsed: AlertItem[] = JSON.parse(existing);
-    // Migrate old schema (no lifecycle status) to the new seed so the
-    // Open/Reopen demo has variety.
-    if (parsed.length > 0 && parsed.every((a) => a.status === undefined)) {
-      const seeded = withDefaults(SEED_ALERTS);
-      localStorage.setItem(ASSIGN_KEY, JSON.stringify(seeded));
-      return seeded;
-    }
     return withDefaults(parsed);
   } catch {
     return withDefaults(SEED_ALERTS);

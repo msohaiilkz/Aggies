@@ -16,7 +16,7 @@ import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { MainLayout } from "@/components/layout/main-layout";
 import { getAnalysts, initAnalysts, type Analyst } from "@/hooks/use-analysts";
-import { AlertControlPanel } from "@/components/AlertControlPanel";
+import { isAnalystOnline, ONLINE_EVENT } from "@/hooks/use-analyst-online";
 import { useSearch } from "@/hooks/use-search";
 
 export default function TeamManagementPage() {
@@ -33,12 +33,16 @@ export default function TeamManagementPage() {
     setAnalysts(getAnalysts());
   }, []);
 
-  // Load on mount + re-load when localStorage changes (cross-tab sync)
+  // Load on mount + re-load when localStorage or online presence changes
   useEffect(() => {
     loadAnalysts();
     const handleStorage = () => loadAnalysts();
     window.addEventListener("storage", handleStorage);
-    return () => window.removeEventListener("storage", handleStorage);
+    window.addEventListener(ONLINE_EVENT, handleStorage);
+    return () => {
+      window.removeEventListener("storage", handleStorage);
+      window.removeEventListener(ONLINE_EVENT, handleStorage);
+    };
   }, [loadAnalysts]);
 
   useEffect(() => {
@@ -47,9 +51,16 @@ export default function TeamManagementPage() {
 
   const statusOrder: Record<string, number> = { Pending: 0, Active: 1, Inactive: 2 };
 
+  // The displayed status follows live presence: an online analyst shows
+  // "Active", an offline one shows "Inactive". Accounts still awaiting Super
+  // Admin approval keep the "Pending" label.
+  const displayStatus = (a: Analyst): Analyst["status"] =>
+    a.status === "Pending" ? "Pending" : isAnalystOnline(a.name) ? "Active" : "Inactive";
+
   const gq = globalQuery.trim().toLowerCase();
   const filteredAnalysts = analysts
     .filter((a) => {
+      const ds = displayStatus(a);
       const matchesSearch =
         a.name.toLowerCase().includes(searchQuery.toLowerCase()) ||
         a.username.toLowerCase().includes(searchQuery.toLowerCase());
@@ -58,15 +69,14 @@ export default function TeamManagementPage() {
         a.name.toLowerCase().includes(gq) ||
         a.username.toLowerCase().includes(gq) ||
         a.role.toLowerCase().includes(gq) ||
-        a.status.toLowerCase().includes(gq);
+        ds.toLowerCase().includes(gq);
       const matchesStatus =
-        statusFilter === "all" ||
-        a.status.toLowerCase() === statusFilter.toLowerCase();
+        statusFilter === "all" || ds.toLowerCase() === statusFilter.toLowerCase();
       return matchesSearch && matchesGlobal && matchesStatus;
     })
-    .sort((a, b) => (statusOrder[a.status] ?? 3) - (statusOrder[b.status] ?? 3));
+    .sort((a, b) => (statusOrder[displayStatus(a)] ?? 3) - (statusOrder[displayStatus(b)] ?? 3));
 
-  const totalActive = analysts.filter((a) => a.status === "Active").length;
+  const totalActive = analysts.filter((a) => displayStatus(a) === "Active").length;
   const totalPending = analysts.filter((a) => a.status === "Pending").length;
   const totalResolved = analysts.reduce((s, a) => s + a.casesResolved, 0);
 
@@ -95,7 +105,7 @@ export default function TeamManagementPage() {
   };
 
   return (
-    <MainLayout title="Team Management">
+    <MainLayout title="User Management">
       <div className="flex flex-col min-h-screen bg-transparent">
         <div className="flex-1 p-6 space-y-6 max-w-[1600px] mx-auto w-full">
 
@@ -103,10 +113,11 @@ export default function TeamManagementPage() {
           <div className="flex flex-col sm:flex-row items-center justify-between pb-2 gap-4">
             <div>
               <h1 className="text-2xl font-bold text-gray-900 tracking-tight">
-                Team Management
+                User Management
               </h1>
               <p className="text-sm text-gray-500 mt-1">
-                Manage platform analysts and risk specialists
+                Create analysts and request account changes. Changes are
+                activated after Super Admin approval.
               </p>
             </div>
             <div className="flex items-center gap-2">
@@ -191,9 +202,6 @@ export default function TeamManagementPage() {
             </div>
           )}
 
-          {/* Alert limit + assignments */}
-          <AlertControlPanel />
-
           {/* Analyst Directory */}
           <Card className="bg-white border-0 shadow-sm">
             <CardHeader className="px-6 py-5 border-b border-gray-50">
@@ -237,7 +245,6 @@ export default function TeamManagementPage() {
                     <th className="p-4 font-medium text-gray-500 text-sm">Username</th>
                     <th className="p-4 font-medium text-gray-500 text-sm">Role</th>
                     <th className="p-4 font-medium text-gray-500 text-sm">Status</th>
-                    <th className="p-4 font-medium text-gray-500 text-sm">Cases Resolved</th>
                     <th className="p-4 font-medium text-gray-500 text-sm">Created</th>
                     <th className="p-4 font-medium text-gray-500 text-sm">Actions</th>
                   </tr>
@@ -258,7 +265,7 @@ export default function TeamManagementPage() {
                         if (isVeryFirst || isFirstPending) {
                           rows.push(
                             <tr key={`hdr-pending-${idx}`}>
-                              <td colSpan={7} className="px-4 py-2 bg-amber-50 border-b border-amber-200">
+                              <td colSpan={6} className="px-4 py-2 bg-amber-50 border-b border-amber-200">
                                 <div className="flex items-center gap-2">
                                   <Clock className="w-3.5 h-3.5 text-amber-600" />
                                   <span className="text-xs font-bold text-amber-700 uppercase tracking-wide">
@@ -272,7 +279,7 @@ export default function TeamManagementPage() {
                         if (isFirstNonPending) {
                           rows.push(
                             <tr key={`hdr-active-${idx}`}>
-                              <td colSpan={7} className="px-4 py-2 bg-gray-50 border-b border-gray-100">
+                              <td colSpan={6} className="px-4 py-2 bg-gray-50 border-b border-gray-100">
                                 <span className="text-xs font-bold text-gray-500 uppercase tracking-wide">
                                   Active & Inactive Analysts
                                 </span>
@@ -300,8 +307,7 @@ export default function TeamManagementPage() {
                             </td>
                             <td className="p-4 text-gray-500 text-sm font-mono">@{analyst.username}</td>
                             <td className="p-4 text-gray-600 text-sm">{analyst.role}</td>
-                            <td className="p-4">{getStatusBadge(analyst.status)}</td>
-                            <td className="p-4 text-gray-600 font-medium">{analyst.casesResolved}</td>
+                            <td className="p-4">{getStatusBadge(displayStatus(analyst))}</td>
                             <td className="p-4 text-gray-400 text-xs">
                               {new Date(analyst.createdAt).toLocaleDateString("en-PK", {
                                 year: "numeric",
@@ -330,7 +336,7 @@ export default function TeamManagementPage() {
                     })()
                   ) : (
                     <tr>
-                      <td colSpan={7} className="p-10 text-center text-gray-500">
+                      <td colSpan={6} className="p-10 text-center text-gray-500">
                         No analysts found matching your search.
                       </td>
                     </tr>

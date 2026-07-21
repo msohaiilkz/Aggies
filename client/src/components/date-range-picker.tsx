@@ -1,7 +1,7 @@
 "use client";
 
 import * as React from "react";
-import { addDays, format } from "date-fns";
+import { format } from "date-fns";
 import { Calendar as CalendarIcon } from "lucide-react";
 import { DateRange } from "react-day-picker";
 
@@ -30,10 +30,11 @@ export function DatePickerWithRange({
   placeholder?: string;
   buttonClassName?: string;
 }) {
-  const [internalDate, setInternalDate] = React.useState<DateRange | undefined>({
-    from: new Date(2025, 0, 20),
-    to: addDays(new Date(2025, 0, 20), 20),
-  });
+  // Start empty so the trigger shows the "Pick a date" placeholder until the
+  // user actually selects a range.
+  const [internalDate, setInternalDate] = React.useState<DateRange | undefined>(
+    undefined,
+  );
   const date = value ?? internalDate;
   const handleDateChange = (nextDate: DateRange | undefined) => {
     if (onChange) {

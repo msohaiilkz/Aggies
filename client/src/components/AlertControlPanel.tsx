@@ -27,9 +27,12 @@ import {
   Minus,
   Plus,
   RotateCcw,
+  Search,
 } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
 import { getAnalysts, type Analyst } from "@/hooks/use-analysts";
+import { isAnalystOnline, ONLINE_EVENT } from "@/hooks/use-analyst-online";
+import { buildAlertIdShared } from "@/lib/alert-field-config";
 import { addReassignment } from "@/hooks/use-reassignments";
 import {
   DEFAULT_GLOBAL_LIMIT,
@@ -62,8 +65,13 @@ export function AlertControlPanel() {
   const [limit, setLimit] = useState<number>(DEFAULT_GLOBAL_LIMIT);
   const [draftLimit, setDraftLimit] = useState<number>(DEFAULT_GLOBAL_LIMIT);
   const [confirmOpen, setConfirmOpen] = useState(false);
+  const [showReason, setShowReason] = useState(false);
+  const [changeReason, setChangeReason] = useState("");
   const [analysts, setAnalysts] = useState<Analyst[]>([]);
   const [alerts, setAlerts] = useState<AlertItem[]>([]);
+  const [analystFilter, setAnalystFilter] = useState<string>("all");
+  const [search, setSearch] = useState("");
+  const [onlineTick, setOnlineTick] = useState(0);
 
   const refresh = () => {
     const l = getGlobalAlertLimit();
@@ -76,15 +84,47 @@ export function AlertControlPanel() {
   useEffect(() => {
     refresh();
     const onChange = () => refresh();
+    const onOnline = () => setOnlineTick((t) => t + 1);
     window.addEventListener("alert-settings-change", onChange);
     window.addEventListener("storage", onChange);
+    window.addEventListener(ONLINE_EVENT, onOnline);
     return () => {
       window.removeEventListener("alert-settings-change", onChange);
       window.removeEventListener("storage", onChange);
+      window.removeEventListener(ONLINE_EVENT, onOnline);
     };
   }, []);
 
   const activeAnalysts = analysts.filter((a) => a.status === "Active");
+  // onlineTick keeps this recomputing when an analyst logs in/out.
+  void onlineTick;
+  const onlineCount = activeAnalysts.filter((a) => isAnalystOnline(a.name)).length;
+  const atCapacityCount = activeAnalysts.filter(
+    (a) => alerts.filter((x) => x.assignedTo === a.id).length >= limit,
+  ).length;
+  // Same Alert ID as the analyst dashboard (shared formula) so the executive can
+  // search an analyst's alert by its id.
+  const displayId = (al: AlertItem) =>
+    buildAlertIdShared(al.rule ?? 1, al.createdAt, al.id);
+
+  const searchQ = search.trim().toLowerCase();
+  const visibleAlerts = alerts.filter((al) => {
+    const matchesAnalyst =
+      analystFilter === "all"
+        ? true
+        : analystFilter === "__unassigned"
+          ? !al.assignedTo
+          : al.assignedTo === analystFilter;
+    // Search by Alert ID, Customer, Rule Number, or CNIC/Passport (alertCode).
+    const matchesSearch =
+      !searchQ ||
+      displayId(al).toLowerCase().includes(searchQ) ||
+      al.customerName.toLowerCase().includes(searchQ) ||
+      (al.alertCode ?? "").toLowerCase().includes(searchQ) ||
+      (al.rule != null &&
+        (`rule ${al.rule}`.includes(searchQ) || String(al.rule) === searchQ));
+    return matchesAnalyst && matchesSearch;
+  });
   const analystName = (id: string | null) =>
     !id ? "Unassigned" : analysts.find((a) => a.id === id)?.name ?? "Unknown";
   const loadFor = (id: string) =>
@@ -113,17 +153,6 @@ export function AlertControlPanel() {
         description: `Alert ${alertId} is now ${status}.`,
       });
     }
-  };
-
-  const formatGeneratedAt = (iso?: string) => {
-    if (!iso) return "—";
-    return new Date(iso).toLocaleString("en-PK", {
-      day: "2-digit",
-      month: "short",
-      hour: "2-digit",
-      minute: "2-digit",
-      hour12: true,
-    });
   };
 
   const handleReassign = (alertId: string, newId: string) => {
@@ -158,64 +187,95 @@ export function AlertControlPanel() {
 
   return (
     <div className="space-y-5">
-      {/* Global limit */}
+      {/* Per-analyst active alert limit */}
       <Card className="border-0 shadow-sm">
-        <CardContent className="p-5 flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4">
-          <div className="flex items-center gap-3">
-            <div className="p-3 bg-[#46CDCF]/10 rounded-lg text-[#46CDCF]">
-              <BellRing className="w-5 h-5" />
+        <CardContent className="p-5">
+          <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4">
+            <div className="flex items-center gap-3">
+              <div className="p-3 bg-[#46CDCF]/10 rounded-lg text-[#46CDCF]">
+                <BellRing className="w-5 h-5" />
+              </div>
+              <div>
+                <p className="font-bold text-gray-900">
+                  Per-Analyst Active Alert Limit
+                </p>
+                <p className="text-xs text-gray-500">
+                  Maximum active alerts per analyst — applies to all
+                  active/live analysts
+                </p>
+              </div>
             </div>
-            <div>
-              <p className="font-bold text-gray-900">Global Alert Limit</p>
-              <p className="text-xs text-gray-500">
-                Maximum alerts per analyst — applies to all analysts
-              </p>
+            <div className="flex items-center gap-3">
+              {/* Stepper + typeable number input (max 100) */}
+              <div className="flex items-center rounded-lg border border-gray-200 overflow-hidden">
+                <button
+                  type="button"
+                  onClick={() => setDraftLimit((l) => clampLimit(l - 1))}
+                  disabled={draftLimit <= MIN_ALERT_LIMIT}
+                  className="h-10 w-10 flex items-center justify-center text-gray-600 hover:bg-gray-50 disabled:opacity-40 disabled:cursor-not-allowed"
+                  aria-label="Decrease limit"
+                >
+                  <Minus className="w-4 h-4" />
+                </button>
+                <Input
+                  type="number"
+                  min={MIN_ALERT_LIMIT}
+                  max={MAX_ALERT_LIMIT}
+                  value={draftLimit}
+                  onChange={(e) =>
+                    setDraftLimit(clampLimit(parseInt(e.target.value, 10)))
+                  }
+                  className="h-10 w-16 border-0 border-x border-gray-200 rounded-none text-center font-bold text-gray-900 focus-visible:ring-0 focus-visible:ring-offset-0"
+                  data-testid="input-global-limit"
+                />
+                <button
+                  type="button"
+                  onClick={() => setDraftLimit((l) => clampLimit(l + 1))}
+                  disabled={draftLimit >= MAX_ALERT_LIMIT}
+                  className="h-10 w-10 flex items-center justify-center text-gray-600 hover:bg-gray-50 disabled:opacity-40 disabled:cursor-not-allowed"
+                  aria-label="Increase limit"
+                >
+                  <Plus className="w-4 h-4" />
+                </button>
+              </div>
+              <span className="text-xs text-gray-400 whitespace-nowrap">
+                / {MAX_ALERT_LIMIT} max
+              </span>
+              <Button
+                onClick={() => setConfirmOpen(true)}
+                disabled={draftLimit === limit}
+                className="h-10 bg-[#46CDCF] hover:bg-[#3db8ba] text-white font-semibold"
+              >
+                Submit
+              </Button>
             </div>
           </div>
-          <div className="flex items-center gap-3">
-            {/* Stepper + typeable number input (max 100) */}
-            <div className="flex items-center rounded-lg border border-gray-200 overflow-hidden">
+
+          {/* Add change reason */}
+          <div className="mt-3">
+            {!showReason ? (
               <button
                 type="button"
-                onClick={() => setDraftLimit((l) => clampLimit(l - 1))}
-                disabled={draftLimit <= MIN_ALERT_LIMIT}
-                className="h-10 w-10 flex items-center justify-center text-gray-600 hover:bg-gray-50 disabled:opacity-40 disabled:cursor-not-allowed"
-                aria-label="Decrease limit"
+                onClick={() => setShowReason(true)}
+                className="text-sm font-medium text-[#46CDCF] hover:text-[#3db8ba]"
               >
-                <Minus className="w-4 h-4" />
+                + Add change reason
               </button>
+            ) : (
               <Input
-                type="number"
-                min={MIN_ALERT_LIMIT}
-                max={MAX_ALERT_LIMIT}
-                value={draftLimit}
-                onChange={(e) =>
-                  setDraftLimit(clampLimit(parseInt(e.target.value, 10)))
-                }
-                className="h-10 w-16 border-0 border-x border-gray-200 rounded-none text-center font-bold text-gray-900 focus-visible:ring-0 focus-visible:ring-offset-0"
-                data-testid="input-global-limit"
+                value={changeReason}
+                onChange={(e) => setChangeReason(e.target.value)}
+                placeholder="Reason for changing the limit (optional)..."
+                className="h-10 max-w-md text-sm"
               />
-              <button
-                type="button"
-                onClick={() => setDraftLimit((l) => clampLimit(l + 1))}
-                disabled={draftLimit >= MAX_ALERT_LIMIT}
-                className="h-10 w-10 flex items-center justify-center text-gray-600 hover:bg-gray-50 disabled:opacity-40 disabled:cursor-not-allowed"
-                aria-label="Increase limit"
-              >
-                <Plus className="w-4 h-4" />
-              </button>
-            </div>
-            <span className="text-xs text-gray-400 whitespace-nowrap">
-              / {MAX_ALERT_LIMIT} max
-            </span>
-            <Button
-              onClick={() => setConfirmOpen(true)}
-              disabled={draftLimit === limit}
-              className="h-10 bg-[#46CDCF] hover:bg-[#3db8ba] text-white font-semibold"
-            >
-              Submit
-            </Button>
+            )}
           </div>
+
+          {/* Note */}
+          <p className="mt-3 text-xs text-gray-400 leading-relaxed">
+            Active alerts include Pending, Reviewed and Flagged. Fraud, Not
+            Fraud, False Positive and Discarded alerts do not count.
+          </p>
         </CardContent>
       </Card>
 
@@ -245,7 +305,7 @@ export function AlertControlPanel() {
       {/* Alert assignments */}
       <Card className="border-0 shadow-sm">
         <CardContent className="p-0">
-          <div className="px-6 py-4 border-b border-gray-50 flex items-center justify-between gap-3">
+          <div className="px-6 py-4 border-b border-gray-50 flex flex-col sm:flex-row sm:items-center justify-between gap-3">
             <div className="flex items-center gap-3">
               <div className="p-2 bg-purple-100 rounded-lg text-purple-600">
                 <UserCog className="w-4 h-4" />
@@ -253,87 +313,105 @@ export function AlertControlPanel() {
               <div>
                 <p className="font-bold text-gray-900">Alert Assignments</p>
                 <p className="text-xs text-gray-500">
-                  Reassign alerts from busy analysts to others
+                  Reassign active alerts from busy analysts to others
                 </p>
               </div>
             </div>
-            <Badge className="bg-purple-50 text-purple-700 hover:bg-purple-50 border-0 shrink-0">
-              {activeAnalysts.length} analyst
-              {activeAnalysts.length !== 1 ? "s" : ""}
-            </Badge>
+            <div className="flex flex-col sm:flex-row items-stretch gap-2 w-full sm:w-auto">
+              {/* Search by Alert ID / Customer / Rule / CNIC */}
+              <div className="relative w-full sm:w-64">
+                <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-gray-400" />
+                <Input
+                  value={search}
+                  onChange={(e) => setSearch(e.target.value)}
+                  placeholder="Search Alert ID, customer, rule…"
+                  className="h-9 pl-9 text-sm"
+                />
+              </div>
+              {/* All analysts filter */}
+              <Select value={analystFilter} onValueChange={setAnalystFilter}>
+                <SelectTrigger className="h-9 w-full sm:w-[190px] text-sm">
+                  <SelectValue placeholder="All analysts" />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="all">All analysts</SelectItem>
+                  <SelectItem value="__unassigned">Unassigned</SelectItem>
+                  {activeAnalysts.map((a) => (
+                    <SelectItem key={a.id} value={a.id}>
+                      {a.name}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </div>
           </div>
 
-          {/* Analyst load — wraps + scrolls so any number of analysts fits */}
-          {activeAnalysts.length > 0 && (
-            <div className="px-6 py-3 border-b border-gray-50 bg-gray-50/40">
-              <div className="mb-2 flex items-center gap-2">
-                <span className="text-[11px] font-bold uppercase tracking-wide text-gray-400">
-                  Analyst Load
-                </span>
-                <span className="text-[11px] text-gray-400">
-                  ({activeAnalysts.length})
-                </span>
-              </div>
-              <div className="flex max-h-24 flex-wrap gap-2 overflow-y-auto pr-1">
-                {activeAnalysts.map((a) => {
-                  const c = loadFor(a.id);
-                  const ratio = limit > 0 ? c / limit : 0;
-                  let cls = "bg-emerald-50 text-emerald-700 ring-emerald-100";
-                  let label = "Low";
-                  if (c >= limit) {
-                    cls = "bg-red-50 text-red-600 ring-red-100";
-                    label = "Full";
-                  } else if (ratio >= 0.8) {
-                    cls = "bg-red-50 text-red-600 ring-red-100";
-                    label = "High";
-                  } else if (ratio >= 0.5) {
-                    cls = "bg-amber-50 text-amber-700 ring-amber-100";
-                    label = "Medium";
-                  }
-                  return (
-                    <span
-                      key={a.id}
-                      className={`inline-flex items-center gap-1.5 rounded-lg px-2.5 py-1 text-xs font-medium ring-1 ${cls}`}
-                      title={`${label} load`}
-                    >
-                      <span className="max-w-[120px] truncate">{a.name}</span>
-                      <span className="font-bold tabular-nums">
-                        {c}/{limit}
-                      </span>
-                    </span>
-                  );
-                })}
-              </div>
-            </div>
-          )}
+          {/* Stats row */}
+          <div className="px-6 py-3 border-b border-gray-50 bg-gray-50/40 flex flex-wrap items-center gap-x-2 gap-y-1 text-[11px] font-bold uppercase tracking-wide text-gray-400">
+            <span className="text-gray-600">{activeAnalysts.length}</span>
+            <span>Analysts</span>
+            <span className="text-gray-300">·</span>
+            <span className="text-emerald-600">{onlineCount}</span>
+            <span>Online</span>
+            <span className="text-gray-300">·</span>
+            <span className="text-red-500">{atCapacityCount}</span>
+            <span>At Capacity</span>
+            <span className="text-gray-300">·</span>
+            <span className="text-gray-600">{alerts.length}</span>
+            <span>Active Alerts</span>
+          </div>
+
           <div className="overflow-x-auto">
             <table className="w-full text-left">
               <thead>
                 <tr className="bg-gray-50/50 border-b border-gray-100">
                   <th className="p-4 font-medium text-gray-500 text-sm">Alert ID</th>
                   <th className="p-4 font-medium text-gray-500 text-sm">Customer</th>
-                  <th className="p-4 font-medium text-gray-500 text-sm">Severity</th>
+                  <th className="p-4 font-medium text-gray-500 text-sm">Rule Number</th>
+                  <th className="p-4 font-medium text-gray-500 text-sm">Status</th>
                   <th className="p-4 font-medium text-gray-500 text-sm">Channel</th>
                   <th className="p-4 font-medium text-gray-500 text-sm">Assigned To</th>
+                  <th className="p-4 font-medium text-gray-500 text-sm">Analyst Load</th>
                   <th className="p-4 font-medium text-gray-500 text-sm">Reassign</th>
-                  <th className="p-4 font-medium text-gray-500 text-sm">Open / Reopen</th>
-                  <th className="p-4 font-medium text-gray-500 text-sm">Generated</th>
                 </tr>
               </thead>
               <tbody>
-                {alerts.map((al) => (
+                {visibleAlerts.map((al) => (
                   <tr
                     key={al.id}
                     className="border-b border-gray-50 hover:bg-gray-50/50 last:border-0"
                     data-testid={`alert-row-${al.id}`}
                   >
-                    <td className="p-4 font-mono text-xs text-gray-700">{al.id}</td>
+                    <td className="p-4 font-mono text-xs text-gray-700">
+                      {displayId(al)}
+                    </td>
                     <td className="p-4 text-sm text-gray-900">{al.customerName}</td>
+                    {/* Rule Number */}
+                    <td className="p-4 text-sm text-gray-700 whitespace-nowrap">
+                      {al.rule ? `Rule ${al.rule}` : "—"}
+                    </td>
+                    {/* Status */}
                     <td className="p-4">
-                      {al.assignedTo ? (
-                        loadSeverityBadge(loadFor(al.assignedTo), limit)
+                      {al.status === "Closed" ? (
+                        <Button
+                          size="sm"
+                          variant="outline"
+                          onClick={() => handleAlertStatus(al.id, "Reopened")}
+                          className="h-8 gap-1 border-blue-200 text-xs text-blue-600 hover:bg-blue-50"
+                        >
+                          <RotateCcw className="h-3.5 w-3.5" />
+                          Reopen
+                        </Button>
                       ) : (
-                        <Badge className="bg-gray-100 text-gray-500 border-0">—</Badge>
+                        <Badge
+                          className={`rounded-md border-0 ${
+                            al.status === "Reopened"
+                              ? "bg-blue-100 text-blue-700 hover:bg-blue-100"
+                              : "bg-emerald-100 text-emerald-700 hover:bg-emerald-100"
+                          }`}
+                        >
+                          {al.status === "Reopened" ? "Reopened" : "Open"}
+                        </Badge>
                       )}
                     </td>
                     <td className="p-4 text-sm text-gray-600">{al.channel}</td>
@@ -346,6 +424,22 @@ export function AlertControlPanel() {
                         <span className="italic text-gray-400">Unassigned</span>
                       )}
                     </td>
+                    {/* Analyst load of the currently-assigned analyst */}
+                    <td className="p-4">
+                      {al.assignedTo ? (
+                        <span className="inline-flex items-center gap-1.5">
+                          {loadSeverityBadge(loadFor(al.assignedTo), limit)}
+                          <span className="text-xs font-bold tabular-nums text-gray-500">
+                            {loadFor(al.assignedTo)}/{limit}
+                          </span>
+                        </span>
+                      ) : (
+                        <Badge className="rounded-md bg-gray-100 text-gray-500 border-0">
+                          —
+                        </Badge>
+                      )}
+                    </td>
+                    {/* Reassign */}
                     <td className="p-4">
                       <Select
                         value={al.assignedTo ?? ""}
@@ -379,37 +473,9 @@ export function AlertControlPanel() {
                         </SelectContent>
                       </Select>
                     </td>
-                    {/* Open / Reopen */}
-                    <td className="p-4">
-                      {al.status === "Closed" ? (
-                        <Button
-                          size="sm"
-                          variant="outline"
-                          onClick={() => handleAlertStatus(al.id, "Reopened")}
-                          className="h-8 gap-1 border-blue-200 text-xs text-blue-600 hover:bg-blue-50"
-                        >
-                          <RotateCcw className="h-3.5 w-3.5" />
-                          Reopen
-                        </Button>
-                      ) : (
-                        <Badge
-                          className={`border-0 ${
-                            al.status === "Reopened"
-                              ? "bg-blue-100 text-blue-700 hover:bg-blue-100"
-                              : "bg-emerald-100 text-emerald-700 hover:bg-emerald-100"
-                          }`}
-                        >
-                          {al.status === "Reopened" ? "Reopened" : "Open"}
-                        </Badge>
-                      )}
-                    </td>
-                    {/* Generated timestamp */}
-                    <td className="p-4 text-sm text-gray-500 whitespace-nowrap">
-                      {formatGeneratedAt(al.createdAt)}
-                    </td>
                   </tr>
                 ))}
-                {alerts.length === 0 && (
+                {visibleAlerts.length === 0 && (
                   <tr>
                     <td colSpan={8} className="p-8 text-center text-gray-400">
                       No alerts to assign

@@ -28,7 +28,12 @@ import ForceCloseModal from "@/components/ForceCloseModal";
 import { useToast } from "@/hooks/use-toast";
 import { getAlertOverrides, setAlertOverride } from "@/hooks/use-alert-status";
 import { getReassignments, REASSIGN_EVENT } from "@/hooks/use-reassignments";
-import { ruleIndexFor } from "@/lib/alert-field-config";
+import { ruleIndexFor, buildAlertIdShared } from "@/lib/alert-field-config";
+import { ANALYST_NAMES } from "@/lib/analysts";
+import {
+  isAnalystOnline,
+  ONLINE_EVENT,
+} from "@/hooks/use-analyst-online";
 import { useSearch } from "@/hooks/use-search";
 import {
   AlertDialog,
@@ -45,6 +50,9 @@ import {
 
 // Mock data for demonstration
 // Mock data for demonstration
+// One active alert per rule (Rule 1..9) so every rule's data-segregation can be
+// verified on the analyst dashboard. Order maps directly: id "1" → Rule 1, …,
+// id "9" → Rule 9 (via ruleIndexFor on alertSource).
 const initialAlerts = [
   {
     id: "1",
@@ -63,96 +71,51 @@ const initialAlerts = [
   },
   {
     id: "2",
-    alertCode: "P436691BNC140",
+    alertCode: "42301-26920823-3",
     customerName: "Obaid Mehmood",
-    globalId: "P436691BNC140",
-    idType: "Passport",
-    alertCount: 4,
+    globalId: "42301-26920823-3",
+    idType: "CNIC",
+    alertCount: 3,
     amount: 15000.0,
     severity: "MEDIUM",
     status: "OPEN",
     city: "Lahore",
     createdAt: "2025-01-09T14:20:00Z",
-    alertSource: "AI Model (Unusual Location)",
+    alertSource: "Rule #302 (Structuring)",
     channel: "IBFT",
   },
   {
     id: "3",
-    alertCode: "42301-26920823-3",
+    alertCode: "P436691BNC141",
     customerName: "Abid Ali",
-    globalId: "42301-26920823-3",
-    idType: "CNIC",
+    globalId: "P436691BNC141",
+    idType: "Passport",
     alertCount: 1,
     amount: 20000.0,
     severity: "LOW",
     status: "OPEN",
     city: "Islamabad",
     createdAt: "2025-01-08T09:15:00Z",
-    alertSource: "Rule #302 (Structuring)",
+    alertSource: "Rule #404 (Large Transaction)",
     channel: "POS",
   },
   {
     id: "4",
-    alertCode: "P436691BNC140",
-    customerName: "Mustafa Mahmood",
-    globalId: "P436691BNC140",
-    idType: "Passport",
-    alertCount: 5,
-    amount: 75000.0,
-    severity: "HIGH",
-    status: "OPEN",
-    city: "Karachi",
-    createdAt: "2025-01-07T16:45:00Z",
-    alertSource: "AI Model (Behavioral Anomaly)",
-    channel: "E-Commerce",
-  },
-  {
-    id: "5",
-    alertCode: "P436691BNC140",
-    customerName: "Kelvin Harris",
-    globalId: "P436691BNC140",
-    idType: "Passport",
-    alertCount: 3,
-    amount: 230000.0,
-    severity: "HIGH",
-    status: "OPEN",
-    city: "Multan",
-    createdAt: "2025-01-06T11:30:00Z",
-    alertSource: "Rule #404 (Large Transaction)",
-    channel: "FT-Raast",
-  },
-  {
-    id: "6",
-    alertCode: "P436691BNC140",
-    customerName: "Obaid Mehmood",
-    globalId: "P436691BNC140",
-    idType: "Passport",
-    alertCount: 1,
-    amount: 171450.0,
-    severity: "HIGH",
-    status: "OPEN",
-    city: "Hyderabad",
-    createdAt: "2025-01-05T13:20:00Z",
-    alertSource: "AI Model (Device Mismatch)",
-    channel: "IBFT",
-  },
-  {
-    id: "7",
     alertCode: "A987654XYZ210",
     customerName: "Ayesha Khan",
     globalId: "A987654XYZ210",
     idType: "CNIC",
-    alertCount: 3,
-    amount: 150000.0,
+    alertCount: 2,
+    amount: 95000.0,
     severity: "HIGH",
-    status: "FRAUD",
+    status: "OPEN",
     city: "Karachi",
-    createdAt: "2025-01-04T09:30:00Z",
+    createdAt: "2025-01-07T16:45:00Z",
     alertSource: "Rule #55 (Multiple ATM Attempts)",
     channel: "ATM-On-Us",
   },
   {
-    id: "8",
+    id: "5",
     alertCode: "B123456LMN987",
     customerName: "Zainab Ali",
     globalId: "B123456LMN987",
@@ -161,14 +124,59 @@ const initialAlerts = [
     amount: 50000.0,
     severity: "MEDIUM",
     status: "OPEN",
-    city: "Lahore",
-    createdAt: "2025-01-08T11:20:00Z",
+    city: "Multan",
+    createdAt: "2025-01-06T11:30:00Z",
     alertSource: "Rule #12 (Off-us withdrawal pattern)",
     channel: "ATM-Of-Us",
   },
   {
-    id: "43",
-    alertCode: "B1234160MN0123",
+    id: "6",
+    alertCode: "C987654MNO321",
+    customerName: "Fahad Mustafa",
+    globalId: "C987654MNO321",
+    idType: "CNIC",
+    alertCount: 2,
+    amount: 500000.0,
+    severity: "HIGH",
+    status: "OPEN",
+    city: "Islamabad",
+    createdAt: "2025-01-05T15:45:00Z",
+    alertSource: "Rule #88 (Large Cash Tx)",
+    channel: "Withdrawal",
+  },
+  {
+    id: "7",
+    alertCode: "P436691BNC142",
+    customerName: "Salman Ahmed",
+    globalId: "P436691BNC142",
+    idType: "Passport",
+    alertCount: 4,
+    amount: 171450.0,
+    severity: "HIGH",
+    status: "OPEN",
+    city: "Hyderabad",
+    createdAt: "2025-01-09T08:15:00Z",
+    alertSource: "AI Model (Unusual Location)",
+    channel: "E-Commerce",
+  },
+  {
+    id: "8",
+    alertCode: "P436691BNC143",
+    customerName: "Mustafa Mahmood",
+    globalId: "P436691BNC143",
+    idType: "Passport",
+    alertCount: 5,
+    amount: 75000.0,
+    severity: "HIGH",
+    status: "OPEN",
+    city: "Karachi",
+    createdAt: "2025-01-07T13:20:00Z",
+    alertSource: "AI Model (Behavioral Anomaly)",
+    channel: "IBFT",
+  },
+  {
+    id: "9",
+    alertCode: "B123456LM0123",
     customerName: "Zaheer Ali",
     globalId: "B123456LM0123",
     idType: "CNIC",
@@ -178,52 +186,19 @@ const initialAlerts = [
     status: "OPEN",
     city: "Karachi",
     createdAt: "2025-01-08T11:20:00Z",
-    alertSource: "Rule #12 (On-us withdrawal pattern)",
-    channel: "ATM-On-Us",
-  },
-  {
-    id: "9",
-    alertCode: "C987654MNO321",
-    customerName: "Fahad Mustafa",
-    globalId: "C987654MNO321",
-    idType: "CNIC",
-    alertCount: 2,
-    amount: 500000.0,
-    severity: "HIGH",
-    status: "FRAUD",
-    city: "Islamabad",
-    createdAt: "2025-01-02T15:45:00Z",
-    alertSource: "Rule #88 (Large Cash Tx)",
-    channel: "Withdrawal",
-  },
-  {
-    id: "10",
-    alertCode: "D456789PQR654",
-    customerName: "Salman Ahmed",
-    globalId: "D456789PQR654",
-    idType: "CNIC",
-    alertCount: 4,
-    amount: 320000.0,
-    severity: "HIGH",
-    status: "OPEN",
-    city: "Karachi",
-    createdAt: "2025-01-09T08:15:00Z",
-    alertSource: "AI Model (Location Mismatch)",
-    channel: "Withdrawal",
+    alertSource: "AI Model (Device Mismatch)",
+    channel: "FT-Raast",
   },
 ];
 
-const ANALYSTS = [
-  "Ahmed Raza",
-  "Sana Iqbal",
-  "Bilal Khan",
-  "Hina Malik",
-  "Usman Tariq",
-];
-// Demo: a couple of analysts are currently offline.
-const OFFLINE_ANALYSTS = new Set(["Bilal Khan", "Usman Tariq"]);
-const isAnalystOnline = (name?: string) =>
-  !!name && !OFFLINE_ANALYSTS.has(name);
+const ANALYSTS = ANALYST_NAMES;
+
+// A channel group opens its own screen; its sub-channels become in-page tabs.
+const CHANNEL_GROUPS: Record<string, string[]> = {
+  Digital: ["FT-Raast", "IBFT", "Withdrawal"],
+  ATM: ["ATM-On-Us", "ATM-Of-Us"],
+  "E-Commerce": ["E-Commerce", "POS"],
+};
 
 export default function FraudDashboard({
   category,
@@ -241,10 +216,18 @@ export default function FraudDashboard({
 
   const [alerts, setAlerts] = useState(() => {
     const overrides = getAlertOverrides();
+    // Stable 6-digit customer number per customer (same name → same number).
+    const custNumberFor = (name: string) =>
+      100000 +
+      (name.split("").reduce((a, c) => a + c.charCodeAt(0), 0) % 899999);
     return initialAlerts.map((alert, i) => {
       const base = {
         ...alert,
+        // Default lifecycle: an assigned alert starts as "Assigned" (not Open)
+        // until the analyst actually opens it.
+        status: alert.status === "OPEN" ? "ASSIGNED" : alert.status,
         analyst: ANALYSTS[i % ANALYSTS.length],
+        customerNumber: custNumberFor(alert.customerName),
         movedToPendingAt: null as number | null,
         lastNotifiedAt: 0,
       };
@@ -311,6 +294,18 @@ export default function FraudDashboard({
     };
   }, [isExecutive, toast]);
 
+  // Re-render when analyst online status changes (login/logout in another tab).
+  const [, forceOnlineTick] = useState(0);
+  useEffect(() => {
+    const onChange = () => forceOnlineTick((n) => n + 1);
+    window.addEventListener(ONLINE_EVENT, onChange);
+    window.addEventListener("storage", onChange);
+    return () => {
+      window.removeEventListener(ONLINE_EVENT, onChange);
+      window.removeEventListener("storage", onChange);
+    };
+  }, []);
+
   const normalizeAlertRuleKey = (alertSource: string) => {
     const matchedRule = alertSource.match(/Rule\s*#\s*(\d+)/i);
     if (matchedRule) return `RULE_${matchedRule[1]}`;
@@ -329,17 +324,10 @@ export default function FraudDashboard({
     {} as Record<string, string>,
   );
 
-  const buildAlertId = (alert: (typeof alerts)[number], alertNumber: number) => {
-    const createdAt = new Date(alert.createdAt);
-    const yy = String(createdAt.getFullYear()).slice(-2);
-    const mm = String(createdAt.getMonth() + 1).padStart(2, "0");
-    const dd = String(createdAt.getDate()).padStart(2, "0");
-    const ruleSequence =
-      ruleSequenceMap[normalizeAlertRuleKey(alert.alertSource)] || "1";
-    const alertNum = String(alertNumber);
-
-    return `1${ruleSequence}${yy}${mm}${dd}${alertNum}`;
-  };
+  // Stable, rule-based Alert ID (shared with the executive's Alert Assignments
+  // so the SAME alert has the SAME id everywhere and can be searched by it).
+  const buildAlertId = (alert: (typeof alerts)[number]) =>
+    buildAlertIdShared(ruleIndexFor(alert.alertSource), alert.createdAt, alert.id);
 
   const [searchQuery, setSearchQuery] = useState("");
   const [selectedAlerts, setSelectedAlerts] = useState<string[]>([]);
@@ -347,10 +335,21 @@ export default function FraudDashboard({
   const [cityFilter, setCityFilter] = useState("all");
   const [amountFilter, setAmountFilter] = useState("all");
   const [selectedChannel, setSelectedChannel] = useState("All");
-  const [statusFilter, setStatusFilter] = useState<string | null>(null);
+  // When a channel group (Digital/ATM/E-Commerce) is opened, the sub-channels
+  // become in-page tabs. activeGroup = the group; subChannel = the picked tab.
+  const [activeGroup, setActiveGroup] = useState<string | null>(null);
+  const [subChannel, setSubChannel] = useState("All");
+  // Initialise from the category so the Closed-Alerts filter applies on the very
+  // first render — otherwise the active (OPEN) alerts flash in on refresh before
+  // the filter kicks in and hides them.
+  const [statusFilter, setStatusFilter] = useState<string | null>(
+    category === "Closed-Alerts" ? "CLOSED_ALERTS" : null,
+  );
   const [selectedCustomerId, setSelectedCustomerId] = useState<string | null>(
     null,
   );
+  // The specific alert (parent OR child) whose status actions should change.
+  const [actionAlertId, setActionAlertId] = useState<string | null>(null);
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [unreviewedModalOpen, setUnreviewedModalOpen] = useState(false);
   const [isForceCloseModalOpen, setIsForceCloseModalOpen] = useState(false);
@@ -387,10 +386,10 @@ export default function FraudDashboard({
             const sinceLastNotification =
               (now - alert.lastNotifiedAt) / (60 * 1000);
 
-            // REAL CONDITION: Notify Every 30 Minutes
-            // FOR DEMO: Notify almost immediately (9 seconds)
-            const threshold = 0.15; // 1 minute for first alert
-            const repeatDelay = 0.15; // 5 minutes for subsequent alerts
+            // Pending-contact reminder fires after 10 minutes, then repeats
+            // every 10 minutes until the alert is actioned.
+            const threshold = 10; // minutes before the first reminder
+            const repeatDelay = 10; // minutes between repeat reminders
 
             if (
               elapsedMinutes >= threshold &&
@@ -416,15 +415,23 @@ export default function FraudDashboard({
   }, [toast]);
 
   useEffect(() => {
-    if (category) {
-      if (category === "Closed-Alerts") {
-        setSelectedChannel("All");
-        setStatusFilter("CLOSED_ALERTS");
-      } else {
-        setSelectedChannel(category);
-        setStatusFilter(null);
-      }
+    setSubChannel("All");
+    if (category === "Closed-Alerts") {
+      setActiveGroup(null);
+      setSelectedChannel("All");
+      setStatusFilter("CLOSED_ALERTS");
+    } else if (category && CHANNEL_GROUPS[category]) {
+      // A channel group screen (Digital / ATM / E-Commerce).
+      setActiveGroup(category);
+      setSelectedChannel("All");
+      setStatusFilter(null);
+    } else if (category && category !== "All") {
+      // A specific channel (legacy deep link).
+      setActiveGroup(null);
+      setSelectedChannel(category);
+      setStatusFilter(null);
     } else {
+      setActiveGroup(null);
       setSelectedChannel("All");
       setStatusFilter(null);
     }
@@ -490,30 +497,33 @@ export default function FraudDashboard({
   };
 
   const filteredAlerts = alerts.filter((alert) => {
-    // Executives monitor everything: active + closed + fraud + discarded, so
-    // they can see what each analyst is working on and what was actioned.
-    if (!isExecutive) {
-      if (statusFilter === "CLOSED_ALERTS") {
-        // Closed = Fraud Confirmed, Not Fraud, Discarded, Account Suspended
-        if (
-          alert.status !== "FRAUD" &&
-          alert.status !== "DISCARDED" &&
-          alert.status !== "RESOLVED" &&
-          alert.status !== "SUSPENDED"
-        )
-          return false;
-      } else if (statusFilter && alert.status !== statusFilter) {
+    // Closed & Fraud Alerts screen (analyst AND executive): only alerts an
+    // analyst has ACTIONED appear, and each row's status is exactly that action
+    // — Fraud Confirmed, Not Fraud, Discarded, Account Suspended, or Pending
+    // Customer Contact. A pending alert also stays in the analyst's active list.
+    if (statusFilter === "CLOSED_ALERTS") {
+      const actioned = [
+        "FRAUD",
+        "DISCARDED",
+        "RESOLVED",
+        "SUSPENDED",
+        "NOT_CONTACTED",
+      ];
+      if (!actioned.includes(alert.status)) return false;
+    } else if (!isExecutive) {
+      if (statusFilter && alert.status !== statusFilter) {
         return false;
       }
-
-      // Normal (active) view: hide anything that has reached a terminal/parked state
+      // Active view shows ONLY Assigned / Open. Any alert the analyst has
+      // actioned — Fraud, Not Fraud, Discarded, Suspended or Pending Customer
+      // Contact — leaves the active list and moves to the Closed/Fraud screen.
       if (
         !statusFilter &&
         (alert.status === "RESOLVED" ||
           alert.status === "FRAUD" ||
           alert.status === "DISCARDED" ||
-          alert.status === "NOT_CONTACTED" ||
-          alert.status === "SUSPENDED")
+          alert.status === "SUSPENDED" ||
+          alert.status === "NOT_CONTACTED")
       )
         return false;
     }
@@ -545,8 +555,18 @@ export default function FraudDashboard({
         alert.amount <= 200000) ||
       (amountFilter === "high" && alert.amount > 200000);
 
-    const matchesChannel =
-      selectedChannel === "All" || alert.channel === selectedChannel;
+    let matchesChannel: boolean;
+    if (activeGroup) {
+      // Inside a channel group: restrict to the group's channels, then narrow
+      // to the picked sub-channel tab.
+      const groupChannels = CHANNEL_GROUPS[activeGroup] ?? [];
+      matchesChannel =
+        groupChannels.includes(alert.channel) &&
+        (subChannel === "All" || alert.channel === subChannel);
+    } else {
+      matchesChannel =
+        selectedChannel === "All" || alert.channel === selectedChannel;
+    }
 
     return (
       matchesChannel &&
@@ -577,14 +597,38 @@ export default function FraudDashboard({
     setCurrentPage(page);
   };
 
-  const openModal = (customerId: string) => {
+  const openModal = (customerId: string, statusAlertId?: string) => {
     setSelectedCustomerId(customerId);
+    setActionAlertId(statusAlertId ?? customerId);
     setIsModalOpen(true);
+    // Opening an assigned alert moves ONLY that alert to "Open" (under review).
+    // For a child (expanded) alert, statusAlertId is its own id so siblings are
+    // unaffected. It won't close by itself — only an action closes it.
+    const sid = statusAlertId ?? customerId;
+    const parent = alerts.find((a) => a.id === sid);
+    if (parent) {
+      if (parent.status === "ASSIGNED") handleAlertAction(sid, "OPEN");
+    } else {
+      // Synthetic child alert — track its own status independently.
+      const overrides = getAlertOverrides();
+      if ((overrides[sid]?.status ?? "ASSIGNED") === "ASSIGNED") {
+        setAlertOverride(sid, { status: "OPEN" });
+      }
+    }
   };
 
   const closeModal = () => {
     setIsModalOpen(false);
     setSelectedCustomerId(null);
+    setActionAlertId(null);
+  };
+
+  // Status of any alert id — real parent (in state) or synthetic child (override).
+  const statusOfAlert = (id: string | null) => {
+    if (!id) return undefined;
+    const parent = alerts.find((a) => a.id === id);
+    if (parent) return parent.status;
+    return getAlertOverrides()[id]?.status ?? "ASSIGNED";
   };
 
   const handleForceCloseSubmit = (reason: string, notes: string) => {
@@ -622,13 +666,18 @@ export default function FraudDashboard({
   const buildChildAlerts = (alert: (typeof filteredAlerts)[number]) => {
     const childCount = Math.max(0, (alert.alertCount || 1) - 1);
     const base = new Date(alert.createdAt);
+    // Each child is a SEPARATE alert with its OWN status (not inherited from
+    // the parent). Its status is tracked independently in the shared store.
+    const overrides = getAlertOverrides();
     return Array.from({ length: childCount }, (_, i) => {
       const d = new Date(base);
       d.setDate(base.getDate() - (i + 1));
+      const childId = `${alert.id}-sub-${i + 1}`;
       return {
         ...alert,
-        id: `${alert.id}-sub-${i + 1}`,
+        id: childId,
         _modalId: alert.id,
+        status: overrides[childId]?.status ?? "ASSIGNED",
         alertSource: CHILD_SOURCES[(i + 1) % CHILD_SOURCES.length],
         createdAt: d.toISOString(),
         alertCount: 1,
@@ -668,14 +717,14 @@ export default function FraudDashboard({
     const isReassigned =
       !isExecutive && reassignedCustomers.includes(alert.customerName);
     // Child (expanded) rows are more compact than primary rows.
-    const cellPad = isChild ? "px-4 py-2" : "p-4";
+    const cellPad = isChild ? "px-3 py-2" : "px-3 py-3.5";
     return (
       <tr
         key={alert.id}
         onClick={
           isReassigned
             ? undefined
-            : () => openModal((alert as any)._modalId ?? alert.id)
+            : () => openModal((alert as any)._modalId ?? alert.id, alert.id)
         }
         className={`border-b transition-colors ${
           isReassigned
@@ -706,11 +755,14 @@ export default function FraudDashboard({
           className={`${cellPad} text-sm font-mono font-bold text-blue-600 hover:text-blue-800`}
         >
           <span className={isChild ? "pl-4 inline-block" : ""}>
-            {buildAlertId(alert, displayNumber ?? 1)}
+            {buildAlertId(alert)}
           </span>
         </td>
         <td className={`${cellPad} font-medium text-gray-900`}>
           {alert.customerName}
+        </td>
+        <td className={`${cellPad} text-sm font-mono text-gray-700`}>
+          {(alert as any).customerNumber ?? "—"}
         </td>
         <td className={cellPad}>
           <div className="space-y-1">
@@ -722,9 +774,12 @@ export default function FraudDashboard({
             </div>
           </div>
         </td>
+        <td className={`${cellPad} text-sm font-medium text-gray-800`}>
+          Rule {ruleIndexFor(alert.alertSource)}
+        </td>
         <td className={cellPad}>
           <span
-            className={`inline-block rounded-full px-2.5 py-1 text-xs font-semibold ${
+            className={`inline-block rounded-md px-2.5 py-1 text-xs font-semibold ${
               engineTypeOf(alert.alertSource) === "AI Model"
                 ? "bg-purple-100 text-purple-700"
                 : "bg-blue-100 text-blue-700"
@@ -733,15 +788,12 @@ export default function FraudDashboard({
             {engineTypeOf(alert.alertSource)}
           </span>
         </td>
-        <td className={`${cellPad} text-sm font-medium text-gray-800`}>
-          Rule {ruleIndexFor(alert.alertSource)}
-        </td>
-        <td className={`${cellPad} text-sm text-gray-500 whitespace-nowrap`}>
+        <td className={`${cellPad} text-sm text-gray-500`}>
           {formatAlertDate(alert.createdAt)}
         </td>
         <td className={`${cellPad} text-center`}>
           {isReassigned ? (
-            <Badge className="bg-purple-500 text-white hover:bg-purple-600 border-0 rounded-full text-xs px-3 py-1">
+            <Badge className="bg-purple-500 text-white hover:bg-purple-600 border-0 rounded-md text-xs px-3 py-1">
               Reassigned
             </Badge>
           ) : (
@@ -804,36 +856,42 @@ export default function FraudDashboard({
   const statusBadge = (status: string) => {
     if (status === "FRAUD")
       return (
-        <Badge className="bg-red-500 text-white hover:bg-red-600 border-0 rounded-full text-xs px-3 py-1 whitespace-nowrap">
+        <Badge className="bg-red-500 text-white hover:bg-red-600 border-0 rounded-md text-xs px-2 py-1 leading-tight">
           Closed (Fraud Confirmed)
         </Badge>
       );
     if (status === "DISCARDED")
       return (
-        <Badge className="bg-gray-500 text-white hover:bg-gray-600 border-0 rounded-full text-xs px-3 py-1 whitespace-nowrap">
+        <Badge className="bg-gray-500 text-white hover:bg-gray-600 border-0 rounded-md text-xs px-2 py-1 leading-tight">
           Discarded
         </Badge>
       );
     if (status === "RESOLVED")
       return (
-        <Badge className="bg-green-500 text-white hover:bg-green-600 border-0 rounded-full text-xs px-3 py-1 whitespace-nowrap">
+        <Badge className="bg-green-500 text-white hover:bg-green-600 border-0 rounded-md text-xs px-2 py-1 leading-tight">
           Closed (Not Fraud)
         </Badge>
       );
     if (status === "NOT_CONTACTED")
       return (
-        <Badge className="bg-amber-500 text-white hover:bg-amber-600 border-0 rounded-full text-xs px-3 py-1 whitespace-nowrap">
-          Pending Customer Contact
+        <Badge className="bg-amber-500 text-white hover:bg-amber-600 border-0 rounded-md text-xs px-2 py-1 leading-tight">
+          Pending
         </Badge>
       );
     if (status === "SUSPENDED")
       return (
-        <Badge className="bg-orange-600 text-white hover:bg-orange-700 border-0 rounded-full text-xs px-3 py-1 whitespace-nowrap">
+        <Badge className="bg-orange-600 text-white hover:bg-orange-700 border-0 rounded-md text-xs px-2 py-1 leading-tight">
           Account Suspended
         </Badge>
       );
+    if (status === "ASSIGNED")
+      return (
+        <Badge className="bg-blue-100 text-blue-700 hover:bg-blue-100 border-0 rounded-md text-xs px-2 py-1 leading-tight">
+          Assigned
+        </Badge>
+      );
     return (
-      <Badge className="bg-slate-200 text-slate-700 hover:bg-slate-300 border-0 rounded-full text-xs px-3 py-1 whitespace-nowrap">
+      <Badge className="bg-slate-200 text-slate-700 hover:bg-slate-300 border-0 rounded-md text-xs px-2 py-1 leading-tight">
         Open
       </Badge>
     );
@@ -875,7 +933,7 @@ export default function FraudDashboard({
   };
 
   return (
-    <div className="min-h-screen bg-gray-50 p-6">
+    <div className="min-h-screen bg-gray-50 p-4 sm:p-6 overflow-x-hidden">
       {/* Header Section */}
       <div className="mb-8">
         <Card className="bg-white border-0 shadow-sm mb-6">
@@ -987,7 +1045,9 @@ export default function FraudDashboard({
           <CardTitle className="text-xl font-bold text-gray-900">
             {category === "Closed-Alerts"
               ? "Closed & Fraud Alerts"
-              : "Active Alerts List"}
+              : activeGroup
+                ? `${activeGroup} Alerts`
+                : "Active Alerts List"}
           </CardTitle>
         </CardHeader>
         <CardContent className="p-6">
@@ -1017,26 +1077,42 @@ export default function FraudDashboard({
               <DatePickerWithRange />
             </div>
 
-            {/* Channel Filter */}
+            {/* Channel Filter — inside a group the options are that group's sub-channels */}
             <div className="space-y-2 min-w-0">
               <label className="text-[13px] font-semibold text-slate-500">
                 Channel
               </label>
-              <Select
-                value={selectedChannel}
-                onValueChange={setSelectedChannel}
-              >
-                <SelectTrigger className="w-full h-10 border-gray-200 focus:ring-blue-500/10 focus:border-blue-500 rounded-lg text-sm">
-                  <SelectValue placeholder="Choose channel" />
-                </SelectTrigger>
-                <SelectContent>
-                  {channels.map((channel) => (
-                    <SelectItem key={channel} value={channel}>
-                      {channel}
-                    </SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
+              {activeGroup ? (
+                <Select value={subChannel} onValueChange={setSubChannel}>
+                  <SelectTrigger className="w-full h-10 border-gray-200 focus:ring-blue-500/10 focus:border-blue-500 rounded-lg text-sm">
+                    <SelectValue placeholder="Choose channel" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="All">All {activeGroup}</SelectItem>
+                    {(CHANNEL_GROUPS[activeGroup] ?? []).map((ch) => (
+                      <SelectItem key={ch} value={ch}>
+                        {ch}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              ) : (
+                <Select
+                  value={selectedChannel}
+                  onValueChange={setSelectedChannel}
+                >
+                  <SelectTrigger className="w-full h-10 border-gray-200 focus:ring-blue-500/10 focus:border-blue-500 rounded-lg text-sm">
+                    <SelectValue placeholder="Choose channel" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {channels.map((channel) => (
+                      <SelectItem key={channel} value={channel}>
+                        {channel}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              )}
             </div>
 
             {/* City Filter */}
@@ -1132,25 +1208,25 @@ export default function FraudDashboard({
                         className="rounded border-gray-300 text-blue-600 focus:ring-blue-500"
                       />
                     </th>
-                    <th className="p-4 text-left font-medium text-gray-900 text-sm">
+                    <th className="px-3 py-3 text-left font-medium text-gray-900 text-sm">
                       Alert ID
                     </th>
-                    <th className="p-4 text-left font-medium text-gray-900 text-sm">
+                    <th className="px-3 py-3 text-left font-medium text-gray-900 text-sm">
                       Customer
                     </th>
-                    <th className="p-4 text-left font-medium text-gray-900 text-sm">
+                    <th className="px-3 py-3 text-left font-medium text-gray-900 text-sm">
                       CNIC / Passport No
                     </th>
-                    <th className="p-4 text-left font-medium text-gray-900 text-sm">
+                    <th className="px-3 py-3 text-left font-medium text-gray-900 text-sm">
                       Rule
                     </th>
-                    <th className="p-4 text-left font-medium text-gray-900 text-sm">
+                    <th className="px-3 py-3 text-left font-medium text-gray-900 text-sm">
                       Engine Type
                     </th>
-                    <th className="p-4 text-left font-medium text-gray-900 text-sm">
+                    <th className="px-3 py-3 text-left font-medium text-gray-900 text-sm">
                       Assigned To
                     </th>
-                    <th className="p-4 text-left font-medium text-gray-900 text-sm">
+                    <th className="px-3 py-3 text-left font-medium text-gray-900 text-sm">
                       Date / Time
                     </th>
                     <th className="p-4 text-center font-medium text-gray-900 text-sm">
@@ -1193,7 +1269,7 @@ export default function FraudDashboard({
                             onClick={() => openModal(alert.id)}
                             className="p-4 text-sm font-mono font-bold text-blue-600 hover:text-blue-800 cursor-pointer whitespace-nowrap"
                           >
-                            {buildAlertId(alert, index + 1)}
+                            {buildAlertId(alert)}
                           </td>
                           <td className="p-4 text-sm font-medium text-gray-900 whitespace-nowrap">
                             {alert.customerName}
@@ -1211,7 +1287,7 @@ export default function FraudDashboard({
                           </td>
                           <td className="p-4">
                             <span
-                              className={`inline-block rounded-full px-2.5 py-1 text-xs font-semibold ${
+                              className={`inline-block rounded-md px-2.5 py-1 text-xs font-semibold ${
                                 engineTypeOf(alert.alertSource) === "AI Model"
                                   ? "bg-purple-100 text-purple-700"
                                   : "bg-blue-100 text-blue-700"
@@ -1313,10 +1389,10 @@ export default function FraudDashboard({
           {/* Alerts Table */}
           {!isExecutive && (
           <div className="overflow-x-auto border rounded-xl shadow-sm">
-            <table className="w-full min-w-[980px] bg-white">
+            <table className="w-full min-w-[880px] bg-white">
               <thead>
                 <tr className="bg-gray-50 border-b">
-                  <th className="w-12 p-4 text-left">
+                  <th className="w-8 px-2 py-3 text-left">
                     <input
                       type="checkbox"
                       checked={
@@ -1330,48 +1406,42 @@ export default function FraudDashboard({
                   {/* <th className="p-4 text-left font-medium text-gray-900 text-sm">
                     No.
                   </th> */}
-                  <th className="p-4 text-left font-medium text-gray-900 text-sm">
+                  <th className="px-3 py-3 text-left font-medium text-gray-900 text-sm">
                     Alert ID
                   </th>
-                  <th className="p-4 text-left font-medium text-gray-900 text-sm">
+                  <th className="px-3 py-3 text-left font-medium text-gray-900 text-sm">
                     Customer Name
                   </th>
-                  <th className="p-4 text-left font-medium text-gray-900 text-sm">
-                    CIF Number
+                  <th className="px-3 py-3 text-left font-medium text-gray-900 text-sm">
+                    Customer Number
                   </th>
-                  <th className="p-4 text-left font-medium text-gray-900 text-sm">
-                    Engine Type
+                  <th className="px-3 py-3 text-left font-medium text-gray-900 text-sm">
+                    CNIC/NICOP/Passport No.
                   </th>
-                  <th className="p-4 text-left font-medium text-gray-900 text-sm">
+                  <th className="px-3 py-3 text-left font-medium text-gray-900 text-sm">
                     Rule Number
                   </th>
-                  <th className="p-4 text-left font-medium text-gray-900 text-sm">
-                    Date
+                  <th className="px-3 py-3 text-left font-medium text-gray-900 text-sm">
+                    Engine Type
                   </th>
-                  {/* <th className="p-4 text-left font-medium text-gray-900 text-sm">
-                    Alert Amount
+                  <th className="px-3 py-3 text-left font-medium text-gray-900 text-sm">
+                    Alert Timestamp
                   </th>
-                  <th className="p-4 text-left font-medium text-gray-900 text-sm">
-                    Severity Level
-                  </th> */}
-                  <th className="p-4 font-medium text-gray-900 text-sm text-center">
+                  <th className="px-2 py-3 font-medium text-gray-900 text-sm text-center">
                     Status
                   </th>
-                  <th className="p-4 font-medium text-gray-900 text-sm text-center">
+                  <th className="px-2 py-3 font-medium text-gray-900 text-sm text-center">
                     Alert Count
                   </th>
-                  {/* <th className="p-4 font-medium text-gray-900 text-sm text-center">
-                    Channel
-                  </th> */}
-                  <th className="p-4 font-medium text-gray-900 text-sm text-right">
-                    <span className="sr-only">Actions</span>
+                  <th className="px-2 py-3 font-medium text-gray-900 text-sm text-center">
+                    Actions
                   </th>
                 </tr>
               </thead>
               <tbody>
                 {filteredAlerts.length === 0 ? (
                   <tr>
-                    <td colSpan={10} className="p-8 text-center text-gray-500">
+                    <td colSpan={11} className="p-8 text-center text-gray-500">
                       No alerts found matching your criteria
                     </td>
                   </tr>
@@ -1407,7 +1477,7 @@ export default function FraudDashboard({
                         {isExpanded && remaining > 0 && (
                           <tr className="border-b bg-slate-50/70">
                             <td className="border-l-4 border-blue-300 p-0" />
-                            <td colSpan={9} className="px-4 py-3">
+                            <td colSpan={10} className="px-4 py-3">
                               <button
                                 type="button"
                                 onClick={() => showMoreInGroup(alert.id)}
@@ -1496,8 +1566,10 @@ export default function FraudDashboard({
         customerId={selectedCustomerId}
         isOpen={isModalOpen}
         onClose={closeModal}
-        onAction={handleAlertAction}
-        alertStatus={alerts.find((a) => a.id === selectedCustomerId)?.status}
+        onAction={(_, action, data) =>
+          handleAlertAction(actionAlertId ?? selectedCustomerId ?? "", action, data)
+        }
+        alertStatus={statusOfAlert(actionAlertId)}
         rule={ruleIndexFor(
           alerts.find((a) => a.id === selectedCustomerId)?.alertSource,
         )}

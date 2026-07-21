@@ -12,8 +12,10 @@ import Transactions from "@/pages/TransactionsTable";
 import ReportsPage from "@/pages/reports-page";
 import TeamManagementPage from "@/pages/TeamManagementPage";
 import CaseManagementPage from "@/pages/CaseManagementPage";
+import AlertAssignmentsPage from "@/pages/AlertAssignmentsPage";
 import SuperAdminPage from "@/pages/SuperAdminPage";
 import FilesPage from "@/pages/files-page";
+import ChangePasswordPage from "@/pages/ChangePasswordPage";
 import NotFound from "@/pages/not-found";
 
 function Router() {
@@ -25,9 +27,14 @@ function Router() {
       <ProtectedRoute path="/transactions" component={Transactions} />
       <ProtectedRoute path="/team-management" component={TeamManagementPage} />
       <ProtectedRoute path="/case-management" component={CaseManagementPage} />
+      <ProtectedRoute
+        path="/alert-assignments"
+        component={AlertAssignmentsPage}
+      />
       <ProtectedRoute path="/super-admin" component={SuperAdminPage} />
       <ProtectedRoute path="/reports" component={ReportsPage} />
       <ProtectedRoute path="/files" component={FilesPage} />
+      <ProtectedRoute path="/change-password" component={ChangePasswordPage} />
       <Route path="/auth" component={AuthPage} />
       <Route component={NotFound} />
     </Switch>
