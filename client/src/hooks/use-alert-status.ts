@@ -11,6 +11,7 @@ const STATUS_VERSION = 2;
 export interface AlertOverride {
   status?: string;
   analyst?: string;
+  suspended?: boolean; // account suspended — alert stays active until closed
 }
 
 // One-time reset: if the seed version changed, drop old overrides.

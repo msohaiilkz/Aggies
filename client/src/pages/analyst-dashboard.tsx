@@ -189,6 +189,69 @@ const initialAlerts = [
     alertSource: "AI Model (Device Mismatch)",
     channel: "FT-Raast",
   },
+  // Already-actioned demo alerts — they appear in the Closed/Fraud screen for
+  // BOTH analyst and executive (they live in code, so they show in every
+  // browser even when live cross-browser sync isn't available).
+  {
+    id: "10",
+    alertCode: "A987654XYZ211",
+    customerName: "Ayesha Khan",
+    globalId: "A987654XYZ211",
+    idType: "CNIC",
+    alertCount: 1,
+    amount: 95000.0,
+    severity: "HIGH",
+    status: "FRAUD",
+    city: "Karachi",
+    createdAt: "2025-01-04T10:00:00Z",
+    alertSource: "Rule #55 (Multiple ATM Attempts)",
+    channel: "ATM-On-Us",
+  },
+  {
+    id: "11",
+    alertCode: "P436691BNC144",
+    customerName: "Salman Ahmed",
+    globalId: "P436691BNC144",
+    idType: "Passport",
+    alertCount: 2,
+    amount: 120000.0,
+    severity: "MEDIUM",
+    status: "RESOLVED",
+    city: "Hyderabad",
+    createdAt: "2025-01-03T11:00:00Z",
+    alertSource: "AI Model (Unusual Location)",
+    channel: "E-Commerce",
+  },
+  {
+    id: "12",
+    alertCode: "C987654MNO322",
+    customerName: "Fahad Mustafa",
+    globalId: "C987654MNO322",
+    idType: "CNIC",
+    alertCount: 1,
+    amount: 300000.0,
+    severity: "HIGH",
+    status: "DISCARDED",
+    city: "Islamabad",
+    createdAt: "2025-01-02T12:00:00Z",
+    alertSource: "Rule #88 (Large Cash Tx)",
+    channel: "Withdrawal",
+  },
+  {
+    id: "13",
+    alertCode: "B123456LMN988",
+    customerName: "Zaheer Ali",
+    globalId: "B123456LMN988",
+    idType: "CNIC",
+    alertCount: 1,
+    amount: 60000.0,
+    severity: "MEDIUM",
+    status: "NOT_CONTACTED",
+    city: "Karachi",
+    createdAt: "2025-01-01T09:30:00Z",
+    alertSource: "AI Model (Device Mismatch)",
+    channel: "FT-Raast",
+  },
 ];
 
 const ANALYSTS = ANALYST_NAMES;
@@ -462,6 +525,18 @@ export default function FraudDashboard({
   };
 
   const handleAlertAction = (alertId: string, action: string, data?: any) => {
+    // Suspend Account marks the account suspended WITHOUT closing the alert —
+    // the alert stays active until the analyst closes it with Mark as Fraud.
+    if (action === "SUSPEND_ACCOUNT") {
+      setAlerts((prev) =>
+        prev.map((a) =>
+          a.id === alertId ? { ...a, suspended: true } : a,
+        ),
+      );
+      setAlertOverride(alertId, { suspended: true });
+      return;
+    }
+
     // Map the action to the resulting status and persist it to the shared
     // store so other views (analyst ⇄ executive) stay in sync.
     const statusMap: Record<string, string> = {
@@ -775,7 +850,9 @@ export default function FraudDashboard({
           </div>
         </td>
         <td className={`${cellPad} text-sm font-medium text-gray-800`}>
-          Rule {ruleIndexFor(alert.alertSource)}
+          {engineTypeOf(alert.alertSource) === "AI Model"
+            ? "—"
+            : `Rule ${ruleIndexFor(alert.alertSource)}`}
         </td>
         <td className={cellPad}>
           <span
@@ -804,7 +881,9 @@ export default function FraudDashboard({
           {extraCount > 0 ? group!.children.length + 1 : alert.alertCount}
         </td>
         <td className={`${cellPad} text-right`}>
-          {extraCount > 0 ? (
+          {/* "Show more" child-expander only on the active list — the client
+              did not request it on the Closed/Fraud screen. */}
+          {extraCount > 0 && category !== "Closed-Alerts" ? (
             <button
               type="button"
               onClick={(e) => {
@@ -1049,6 +1128,8 @@ export default function FraudDashboard({
                 ? `${activeGroup} Alerts`
                 : "Active Alerts List"}
           </CardTitle>
+          {/* Total Alerts count lives on the dashboard (client PDF pt.8/10,
+              sheet row 7) — not on the alert-list header. */}
         </CardHeader>
         <CardContent className="p-6">
           {/* Filters Row */}
@@ -1283,7 +1364,9 @@ export default function FraudDashboard({
                             </div>
                           </td>
                           <td className="p-4 text-sm font-semibold text-gray-700 whitespace-nowrap">
-                            Rule {ruleIndexFor(alert.alertSource)}
+                            {engineTypeOf(alert.alertSource) === "AI Model"
+                              ? "—"
+                              : `Rule ${ruleIndexFor(alert.alertSource)}`}
                           </td>
                           <td className="p-4">
                             <span

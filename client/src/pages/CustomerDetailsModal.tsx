@@ -8,6 +8,7 @@ import MarkFraudModal from "@/components/MarkFraudModalProps";
 import MovePendingContactModal from "@/components/MovePendingContactModal";
 import MarkNotFraudModal from "@/components/MarkNotFraudModal";
 import { sectionsForRule, type SectionKey } from "@/lib/alert-field-config";
+import { getAlertOverrides } from "@/hooks/use-alert-status";
 import {
   AlertDialog,
   AlertDialogAction,
@@ -1393,6 +1394,12 @@ export default function CustomerDetailsModal({
   const [isPendingModalOpen, setIsPendingModalOpen] = useState(false);
   const [isNotFraudModalOpen, setIsNotFraudModalOpen] = useState(false);
   const [isSuspendConfirmOpen, setIsSuspendConfirmOpen] = useState(false);
+  // Suspend marks the account (button turns maroon) but keeps the alert active
+  // — the alert only closes / moves to History on Mark as Fraud.
+  const [suspended, setSuspended] = useState(false);
+  useEffect(() => {
+    setSuspended(!!(customerId && getAlertOverrides()[customerId]?.suspended));
+  }, [customerId, isOpen]);
   const [activeDetailTab, setActiveDetailTab] = useState("all");
   const [showMoreInfo, setShowMoreInfo] = useState(false);
   const [isHistoryLoading, setIsHistoryLoading] = useState(false);
@@ -1524,10 +1531,11 @@ export default function CustomerDetailsModal({
   };
 
   const handleFraudSubmit = (data) => {
-    console.log("Fraud data submitted:", data);
-    // Handle fraud submission logic here
+    // Mark as Fraud closes the case: alert moves to the Closed/Fraud (History)
+    // screen and the main alert page closes.
     if (onAction && customerId) onAction(customerId!, "FRAUD", data);
     setIsMarkFraudModalOpen(false);
+    onClose();
   };
 
   // First button: move the alert to the Pending Customer Contact queue.
@@ -1561,17 +1569,19 @@ export default function CustomerDetailsModal({
     onClose();
   };
 
-  // Fourth action: suspend the customer's account.
+  // Fourth action: suspend the customer's account. This does NOT close the
+  // alert — the button turns maroon and the alert stays active. The alert only
+  // moves to History when the analyst closes it with Mark as Fraud.
   const handleSuspendConfirm = () => {
     setIsSuspendConfirmOpen(false);
-    console.log("Account suspended:", customerId);
-    if (onAction && customerId) onAction(customerId, "SUSPENDED");
+    setSuspended(true);
+    if (onAction && customerId) onAction(customerId, "SUSPEND_ACCOUNT");
     toast({
       title: "Account Suspended",
-      description: "The customer's account has been suspended.",
+      description:
+        "The account is suspended. Close the case with Mark as Fraud to move it to History.",
       variant: "destructive",
     });
-    onClose();
   };
 
   const handleLoadHistory = () => {
@@ -1676,24 +1686,15 @@ export default function CustomerDetailsModal({
   // An opened (active) alert can't be closed until the analyst performs an
   // action. Only the action buttons (which call onClose themselves) may close it.
   const handleAttemptClose = () => {
-    const mustAct = alertStatus === "OPEN" || alertStatus === "ASSIGNED";
-    if (mustAct) {
-      toast({
-        title: "Action Required",
-        description:
-          "You can't close this alert until you perform an action — Mark as Fraud, Mark as Not Fraud, Move to Pending Contact, or Suspend Account.",
-        variant: "destructive",
-      });
-      return;
-    }
+    // Opening an alert already moves it to "Open" on the dashboard; the analyst
+    // may close the panel and action it later (it stays "Open" until then).
     onClose();
   };
 
-  // Per the segregation sheet, Rules 2 & 3 show "Previous Attacks" below the
-  // Beneficiaries section; other rules keep it in its default position.
-  const attacksBelowBeneficiaries = rule === 2 || rule === 3;
+  // Previous Fraud Alert sits at position 7 in the client's section order (via
+  // CSS order-8 below — Session at 7 has no UI section, so this follows Device).
   const previousAttacksCard = (
-    <Card className="overflow-hidden border-gray-100 shadow-sm">
+    <Card className="order-8 overflow-hidden border-gray-100 shadow-sm">
       <CardHeader
         className="cursor-pointer hover:bg-gray-50 transition-all py-4 group"
         onClick={handleLoadAttacks}
@@ -1813,9 +1814,7 @@ export default function CustomerDetailsModal({
             </p>
           </div>
           <div className="flex flex-wrap items-center gap-2">
-            {["FRAUD", "DISCARDED", "RESOLVED", "SUSPENDED"].includes(
-              alertStatus ?? "",
-            ) ? (
+            {["FRAUD", "DISCARDED", "RESOLVED"].includes(alertStatus ?? "") ? (
               <Button
                 size="sm"
                 className="bg-blue-600 text-white hover:bg-blue-700"
@@ -1852,12 +1851,16 @@ export default function CustomerDetailsModal({
                   Mark as Fraud
                 </Button>
                 <Button
-                  variant="outline"
                   size="sm"
-                  className="text-orange-700 border-orange-200 hover:bg-orange-50"
-                  onClick={() => setIsSuspendConfirmOpen(true)}
+                  variant={suspended ? "default" : "outline"}
+                  className={
+                    suspended
+                      ? "bg-[#7f1d1d] hover:bg-[#671616] text-white border-0"
+                      : "text-orange-700 border-orange-200 hover:bg-orange-50"
+                  }
+                  onClick={() => !suspended && setIsSuspendConfirmOpen(true)}
                 >
-                  Suspend Account
+                  {suspended ? "Account Suspended" : "Suspend Account"}
                 </Button>
               </>
             )}
@@ -1904,9 +1907,12 @@ export default function CustomerDetailsModal({
           </div>
         </div> */}
 
-        <div className="p-6 space-y-6">
+        {/* Section order follows the client's segregation sequence via CSS order:
+            Customer → Account → Transaction → Beneficiary → Device → Session →
+            Previous Fraud Alert → Account Activity Pattern → List sections. */}
+        <div className="p-6 flex flex-col gap-6">
           {/* Customer Information */}
-          <Card>
+          <Card className="order-1">
             <CardHeader>
               <div className="flex items-center justify-between gap-4">
                 <CardTitle className="text-lg">Customer Information</CardTitle>
@@ -1916,7 +1922,7 @@ export default function CustomerDetailsModal({
                   onClick={() => setShowMoreInfo((prev) => !prev)}
                   className="bg-blue-600 hover:bg-blue-700 text-white gap-2 font-bold transition-all shadow-sm shadow-blue-200"
                 >
-                  {showMoreInfo ? "Show Less" : "Fetch information"}
+                  {showMoreInfo ? "Show Less" : "More"}
                   <ChevronDown
                     className={`h-4 w-4 transition-transform duration-300 ${showMoreInfo ? "rotate-180" : ""}`}
                   />
@@ -1983,7 +1989,7 @@ export default function CustomerDetailsModal({
 
           {/* Alert on Transactions */}
           {showSection("transaction") && (
-          <Card className="overflow-hidden border-gray-100 shadow-sm">
+          <Card className="order-3 overflow-hidden border-gray-100 shadow-sm">
             <CardHeader
               className="cursor-pointer hover:bg-gray-50 transition-all py-4 group"
               onClick={handleLoadAlerts}
@@ -2066,7 +2072,7 @@ export default function CustomerDetailsModal({
 
           {/* Transaction History */}
           {showSection("transaction") && (
-          <Card className="overflow-hidden border-gray-100 shadow-sm">
+          <Card className="order-4 overflow-hidden border-gray-100 shadow-sm">
             <CardHeader
               className="cursor-pointer hover:bg-gray-50 transition-colors py-4 group"
               onClick={handleLoadHistory}
@@ -2163,7 +2169,7 @@ export default function CustomerDetailsModal({
                     }}
                     className="bg-blue-600 hover:bg-blue-700 text-white gap-2 font-bold transition-all shadow-sm shadow-blue-200 disabled:bg-blue-200 disabled:text-white disabled:shadow-none"
                   >
-                    {isTxnDetailsExpanded ? "Show Less" : "Fetch information"}
+                    {isTxnDetailsExpanded ? "Show Less" : "More"}
                     <ChevronDown
                       className={`h-4 w-4 transition-transform duration-300 ${isTxnDetailsExpanded ? "rotate-180" : ""}`}
                     />
@@ -2239,7 +2245,7 @@ export default function CustomerDetailsModal({
 
           {/* Account Activity Pattern */}
           {showSection("activity") && (
-            <Card className="overflow-hidden border-gray-100 shadow-sm">
+            <Card className="order-9 overflow-hidden border-gray-100 shadow-sm">
               <CardHeader className="py-4">
                 <CardTitle className="text-lg">
                   Account Activity Pattern
@@ -2308,7 +2314,7 @@ export default function CustomerDetailsModal({
 
           {/* List of All Device */}
           {showSection("device") && (
-          <Card className="overflow-hidden border-gray-100 shadow-sm">
+          <Card className="order-6 overflow-hidden border-gray-100 shadow-sm">
             <CardHeader
               className="cursor-pointer hover:bg-gray-50 transition-colors py-4 group"
               onClick={handleLoadDevices}
@@ -2333,7 +2339,7 @@ export default function CustomerDetailsModal({
                   }}
                   className="bg-blue-600 hover:bg-blue-700 text-white gap-2 font-bold transition-all shadow-sm shadow-blue-200 disabled:bg-blue-200 disabled:text-white disabled:shadow-none"
                 >
-                  {isDeviceDetailsExpanded ? "Show Less" : "Fetch information"}
+                  {isDeviceDetailsExpanded ? "Show Less" : "More"}
                   <ChevronDown
                     className={`h-4 w-4 transition-transform duration-300 ${isDeviceDetailsExpanded ? "rotate-180" : ""}`}
                   />
@@ -2398,12 +2404,12 @@ export default function CustomerDetailsModal({
           </Card>
           )}
 
-          {/* Previous Attacks — default position (rules 2 & 3 render it below Beneficiaries) */}
-          {!attacksBelowBeneficiaries && previousAttacksCard}
+          {/* Previous Fraud Alert (positioned via CSS order-8) */}
+          {previousAttacksCard}
 
           {/* List of All Customer Added Beneficiaries */}
           {showSection("beneficiary") && (
-          <Card className="overflow-hidden border-gray-100 shadow-sm">
+          <Card className="order-5 overflow-hidden border-gray-100 shadow-sm">
             <CardHeader
               className="cursor-pointer hover:bg-gray-50 transition-colors py-4 group"
               onClick={handleLoadBeneficiaries}
@@ -2494,7 +2500,7 @@ export default function CustomerDetailsModal({
                     }}
                     className="bg-blue-600 hover:bg-blue-700 text-white gap-2 font-bold transition-all shadow-sm shadow-blue-200 disabled:bg-blue-200 disabled:text-white disabled:shadow-none"
                   >
-                    {isBeneficiaryDetailsExpanded ? "Show Less" : "Fetch information"}
+                    {isBeneficiaryDetailsExpanded ? "Show Less" : "More"}
                     <ChevronDown
                       className={`h-4 w-4 transition-transform duration-300 ${isBeneficiaryDetailsExpanded ? "rotate-180" : ""}`}
                     />
@@ -2557,11 +2563,9 @@ export default function CustomerDetailsModal({
           )}
 
           {/* Previous Attacks — below Beneficiaries for rules 2 & 3 */}
-          {attacksBelowBeneficiaries && previousAttacksCard}
-
           {/* New Transaction Details Tabs */}
           {showSection("transaction") && (
-          <Card className="overflow-hidden">
+          <Card className="order-10 overflow-hidden">
             <CardHeader
               className="px-6 py-4 cursor-pointer hover:bg-gray-50 transition-colors group"
               onClick={handleLoadDetailed}
@@ -2722,7 +2726,7 @@ export default function CustomerDetailsModal({
 
           {/* List of All Customer Accounts */}
           {showSection("account") && (
-          <Card className="overflow-hidden border-gray-100 shadow-sm">
+          <Card className="order-2 overflow-hidden border-gray-100 shadow-sm">
             <CardHeader
               className="cursor-pointer hover:bg-gray-50 transition-colors py-4 group"
               onClick={handleLoadAccounts}

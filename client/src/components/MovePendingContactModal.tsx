@@ -8,7 +8,16 @@ import {
   SelectValue,
 } from "@/components/ui/select";
 import { X, Check, Clock } from "lucide-react";
+import { NoteInput, type NoteState } from "./NoteInput";
 import money from "../assets/4.png";
+
+const EMPTY_NOTE: NoteState = {
+  mode: "comment",
+  text: "",
+  voiceRecorded: false,
+  voiceSeconds: 0,
+  hasNote: false,
+};
 
 interface MovePendingContactModalProps {
   isOpen: boolean;
@@ -22,21 +31,22 @@ export default function MovePendingContactModal({
   onSubmit,
 }: MovePendingContactModalProps) {
   const [contactAttempt, setContactAttempt] = useState("");
-  const [comments, setComments] = useState("");
+  const [note, setNote] = useState<NoteState>(EMPTY_NOTE);
 
   if (!isOpen) return null;
 
-  const canSubmit = contactAttempt !== "";
+  // Contact attempt + a comment OR voice note are both required.
+  const canSubmit = contactAttempt !== "" && note.hasNote;
 
   const handleSubmit = () => {
     if (!canSubmit) return;
-    onSubmit({ contactAttempt, comments });
+    onSubmit({ contactAttempt, comments: note.text });
     handleClose();
   };
 
   const handleClose = () => {
     setContactAttempt("");
-    setComments("");
+    setNote(EMPTY_NOTE);
     onClose();
   };
 
@@ -84,18 +94,12 @@ export default function MovePendingContactModal({
             </Select>
           </div>
 
-          {/* Comments */}
+          {/* Comment OR Voice note (required) */}
           <div>
             <label className="block text-sm font-medium text-gray-800 mb-2">
-              Comments
+              Comments / Notes<span className="text-red-500">*</span>
             </label>
-            <textarea
-              className="w-full p-3 border border-gray-300 rounded-lg resize-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
-              rows={3}
-              placeholder="Add your comments here..."
-              value={comments}
-              onChange={(e) => setComments(e.target.value)}
-            />
+            <NoteInput onChange={setNote} />
           </div>
 
           {/* Behaviour note */}

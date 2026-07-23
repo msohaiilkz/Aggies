@@ -70,6 +70,9 @@ export function AlertControlPanel() {
   const [analysts, setAnalysts] = useState<Analyst[]>([]);
   const [alerts, setAlerts] = useState<AlertItem[]>([]);
   const [analystFilter, setAnalystFilter] = useState<string>("all");
+  const [ruleFilter, setRuleFilter] = useState<string>("all");
+  const [statusFilter, setStatusFilter] = useState<string>("all");
+  const [channelFilter, setChannelFilter] = useState<string>("all");
   const [search, setSearch] = useState("");
   const [onlineTick, setOnlineTick] = useState(0);
 
@@ -123,8 +126,20 @@ export function AlertControlPanel() {
       (al.alertCode ?? "").toLowerCase().includes(searchQ) ||
       (al.rule != null &&
         (`rule ${al.rule}`.includes(searchQ) || String(al.rule) === searchQ));
-    return matchesAnalyst && matchesSearch;
+    const matchesRule = ruleFilter === "all" || String(al.rule) === ruleFilter;
+    const matchesStatus =
+      statusFilter === "all" || (al.status ?? "Open") === statusFilter;
+    const matchesChannel =
+      channelFilter === "all" || al.channel === channelFilter;
+    return (
+      matchesAnalyst &&
+      matchesSearch &&
+      matchesRule &&
+      matchesStatus &&
+      matchesChannel
+    );
   });
+  const channelOptions = Array.from(new Set(alerts.map((a) => a.channel)));
   const analystName = (id: string | null) =>
     !id ? "Unassigned" : analysts.find((a) => a.id === id)?.name ?? "Unknown";
   const loadFor = (id: string) =>
@@ -317,20 +332,60 @@ export function AlertControlPanel() {
                 </p>
               </div>
             </div>
-            <div className="flex flex-col sm:flex-row items-stretch gap-2 w-full sm:w-auto">
+            <div className="flex flex-wrap items-stretch gap-2 w-full sm:w-auto">
               {/* Search by Alert ID / Customer / Rule / CNIC */}
-              <div className="relative w-full sm:w-64">
+              <div className="relative w-full sm:w-56">
                 <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-gray-400" />
                 <Input
                   value={search}
                   onChange={(e) => setSearch(e.target.value)}
-                  placeholder="Search Alert ID, customer, rule…"
+                  placeholder="Search Alert ID, customer…"
                   className="h-9 pl-9 text-sm"
                 />
               </div>
-              {/* All analysts filter */}
+              {/* Rule Number filter */}
+              <Select value={ruleFilter} onValueChange={setRuleFilter}>
+                <SelectTrigger className="h-9 w-[120px] text-sm">
+                  <SelectValue placeholder="All rules" />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="all">All rules</SelectItem>
+                  {[1, 2, 3, 4, 5, 6, 7, 8, 9].map((r) => (
+                    <SelectItem key={r} value={String(r)}>
+                      Rule {r}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+              {/* Status filter */}
+              <Select value={statusFilter} onValueChange={setStatusFilter}>
+                <SelectTrigger className="h-9 w-[130px] text-sm">
+                  <SelectValue placeholder="All status" />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="all">All status</SelectItem>
+                  <SelectItem value="Open">Open</SelectItem>
+                  <SelectItem value="Reopened">Reopened</SelectItem>
+                  <SelectItem value="Closed">Closed</SelectItem>
+                </SelectContent>
+              </Select>
+              {/* Channel filter */}
+              <Select value={channelFilter} onValueChange={setChannelFilter}>
+                <SelectTrigger className="h-9 w-[130px] text-sm">
+                  <SelectValue placeholder="All channels" />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="all">All channels</SelectItem>
+                  {channelOptions.map((c) => (
+                    <SelectItem key={c} value={c}>
+                      {c}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+              {/* Assigned To filter */}
               <Select value={analystFilter} onValueChange={setAnalystFilter}>
-                <SelectTrigger className="h-9 w-full sm:w-[190px] text-sm">
+                <SelectTrigger className="h-9 w-[160px] text-sm">
                   <SelectValue placeholder="All analysts" />
                 </SelectTrigger>
                 <SelectContent>

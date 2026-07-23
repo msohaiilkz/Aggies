@@ -8,7 +8,16 @@ import {
   SelectValue,
 } from "@/components/ui/select";
 import { X, Check } from "lucide-react";
+import { NoteInput, type NoteState } from "./NoteInput";
 import money from "../assets/4.png";
+
+const EMPTY_NOTE: NoteState = {
+  mode: "comment",
+  text: "",
+  voiceRecorded: false,
+  voiceSeconds: 0,
+  hasNote: false,
+};
 
 interface MarkNotFraudModalProps {
   isOpen: boolean;
@@ -22,21 +31,22 @@ export default function MarkNotFraudModal({
   onSubmit,
 }: MarkNotFraudModalProps) {
   const [contactStatus, setContactStatus] = useState("");
-  const [comments, setComments] = useState("");
+  const [note, setNote] = useState<NoteState>(EMPTY_NOTE);
 
   if (!isOpen) return null;
 
-  const canSubmit = contactStatus !== "";
+  // Contact status + a comment OR voice note are both required.
+  const canSubmit = contactStatus !== "" && note.hasNote;
 
   const handleSubmit = () => {
     if (!canSubmit) return;
-    onSubmit({ contactStatus, comments });
+    onSubmit({ contactStatus, comments: note.text });
     handleClose();
   };
 
   const handleClose = () => {
     setContactStatus("");
-    setComments("");
+    setNote(EMPTY_NOTE);
     onClose();
   };
 
@@ -82,18 +92,12 @@ export default function MarkNotFraudModal({
             </Select>
           </div>
 
-          {/* Comments */}
+          {/* Comment OR Voice note (required) */}
           <div>
             <label className="block text-sm font-medium text-gray-800 mb-2">
-              Comments
+              Comments / Notes<span className="text-red-500">*</span>
             </label>
-            <textarea
-              className="w-full p-3 border border-gray-300 rounded-lg resize-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
-              rows={3}
-              placeholder="Add your comments here..."
-              value={comments}
-              onChange={(e) => setComments(e.target.value)}
-            />
+            <NoteInput onChange={setNote} />
           </div>
         </div>
 

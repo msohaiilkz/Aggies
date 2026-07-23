@@ -22,7 +22,8 @@ import {
   Cell,
 } from "recharts";
 import DownloadInsightsModal from "@/components/DownloadInsightsModal";
-import { Wallet } from "lucide-react";
+import { Wallet, Bell } from "lucide-react";
+import { getAlerts } from "@/hooks/use-alert-settings";
 import { UnreviewedAccountsModal } from "@/components/UnreviewedAccountsModal";
 import { NotContactedAlertsModal } from "@/components/NotContactedAlertsModal";
 import { useSearch } from "@/hooks/use-search";
@@ -215,6 +216,11 @@ export default function BusinessDashboard() {
     );
   }
 
+  // Opened alerts split by assignment (from the shared alert store).
+  const dashAlerts = getAlerts();
+  const assignedCount = dashAlerts.filter((a) => a.assignedTo).length;
+  const unassignedCount = dashAlerts.length - assignedCount;
+
   return (
     <div className="flex flex-col min-h-screen bg-transparent">
       {/* Dashboard Content */}
@@ -224,13 +230,18 @@ export default function BusinessDashboard() {
           <h1 className="text-2xl font-bold text-gray-900 tracking-tight">
             Overview
           </h1>
-          <button
-            onClick={handleDownloadClick}
-            className="bg-[#46CDCF] hover:bg-[#3db8ba] text-white px-6 py-2.5 rounded-lg flex items-center space-x-2 font-semibold transition-all shadow-sm active:scale-95"
-          >
-            <span>Download Report</span>
-            <Download className="w-5 h-5" />
-          </button>
+          {/* Total Alerts (reports have their own dedicated page) */}
+          <div className="flex items-center gap-3 bg-white border border-gray-200 rounded-lg px-5 py-2.5 shadow-sm">
+            <div className="p-2 bg-[#46CDCF]/10 rounded-lg text-[#46CDCF]">
+              <Bell className="w-4 h-4" />
+            </div>
+            <div className="leading-tight">
+              <p className="text-[11px] font-semibold uppercase tracking-wide text-gray-400">
+                Total Alerts
+              </p>
+              <p className="text-xl font-bold text-gray-900">{getAlerts().length}</p>
+            </div>
+          </div>
         </div>
 
         {/* Fraud Insights Section */}
@@ -255,54 +266,58 @@ export default function BusinessDashboard() {
               </div> */}
             </div>
 
-            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-5 divide-y sm:divide-y-0 sm:divide-x divide-gray-100 px-4 py-8">
+            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-6 divide-y sm:divide-y-0 sm:divide-x divide-gray-100 px-4 py-8">
               {[
+                {
+                  label: "Opened Alerts",
+                  value: String(assignedCount + unassignedCount),
+                  sub: `Assigned ${assignedCount} · Unassigned ${unassignedCount}`,
+                },
+                {
+                  label: "Closed Alerts",
+                  value: "18",
+                  sub: "Confirmed Fraud 13 · Non-Fraud 5",
+                },
+                {
+                  label: "Pending Contact Alerts",
+                  value: "16",
+                  color: "text-amber-600",
+                  action: () => setNotContactedModalOpen(true),
+                },
+                {
+                  label: "Suspected Transactions",
+                  value: "300",
+                },
                 {
                   label: "Suspected Accounts",
                   value: "120",
-                  btn: "View all accounts",
-                },
-                {
-                  label: "Suspended Transactions",
-                  value: "300",
-                  btn: "View all transactions",
-                },
-                {
-                  label: "Total Un-Reviewed Accounts",
-                  value: "45",
-                  btn: "View all accounts",
                   action: () => setUnreviewedModalOpen(true),
                 },
                 {
-                  label: "Not Contacted Alerts",
-                  value: "16",
-                  color: "text-red-600",
-                  btn: "View not contacted",
-                  btnClass:
-                    "border-red-600 text-red-600 hover:bg-red-600 hover:text-white",
-                  action: () => setNotContactedModalOpen(true),
+                  label: "Suspected Customers",
+                  value: "85",
                 },
-                { label: "Actual Frauds", value: "13", btn: "View all frauds" },
               ].map((stat, idx) => (
-                <div
+                <button
                   key={idx}
-                  className="flex flex-col items-center justify-center px-2 py-6 lg:py-4 xl:py-0 text-center min-w-0"
+                  type="button"
+                  onClick={stat.action}
+                  className={`flex flex-col items-center justify-center px-2 py-6 lg:py-4 xl:py-6 text-center min-w-0 ${stat.action ? "cursor-pointer hover:bg-gray-50" : "cursor-default"}`}
                 >
                   <span
-                    className={`text-3xl xl:text-4xl font-bold mb-2 ${stat.color || "text-gray-900"}`}
+                    className={`text-3xl xl:text-4xl font-bold mb-1.5 ${stat.color || "text-gray-900"}`}
                   >
                     {stat.value}
                   </span>
-                  <span className="text-[13px] xl:text-sm text-gray-400 mb-6 font-medium px-4">
+                  <span className="text-[13px] xl:text-sm text-gray-500 font-medium px-2">
                     {stat.label}
                   </span>
-                  <button
-                    onClick={stat.action}
-                    className={`text-[11px] xl:text-xs font-semibold border px-4 xl:px-6 py-2 rounded-md transition-all whitespace-nowrap ${stat.btnClass || "border-gray-900 text-gray-900 hover:bg-gray-900 hover:text-white"}`}
-                  >
-                    {stat.btn}
-                  </button>
-                </div>
+                  {stat.sub && (
+                    <span className="text-[11px] text-gray-400 mt-1.5">
+                      {stat.sub}
+                    </span>
+                  )}
+                </button>
               ))}
             </div>
           </CardContent>

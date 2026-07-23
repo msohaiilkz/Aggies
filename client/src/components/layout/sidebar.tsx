@@ -51,7 +51,7 @@ export function Sidebar({ isOpen, setIsOpen }: SidebarProps) {
       roles: ["BUSINESS_HEAD", "ANALYST", "SUPER_EXECUTIVE"],
     },
     {
-      name: "Files",
+      name: "File Upload",
       href: "/files",
       icon: FolderUp,
       roles: ["BUSINESS_HEAD", "SUPER_EXECUTIVE"],

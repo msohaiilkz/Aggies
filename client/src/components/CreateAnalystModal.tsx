@@ -17,7 +17,7 @@ import {
   SelectValue,
 } from "@/components/ui/select";
 import { useToast } from "@/hooks/use-toast";
-import { UserPlus, Loader2, ShieldCheck, Mail, Lock, Clock } from "lucide-react";
+import { UserPlus, Loader2, Mail, Lock, Clock } from "lucide-react";
 import { addRequest } from "@/hooks/use-analyst-requests";
 import { useAuth } from "@/hooks/use-auth";
 
@@ -92,7 +92,7 @@ export function CreateAnalystModal({
 
   return (
     <Dialog open={isOpen} onOpenChange={onClose}>
-      <DialogContent className="sm:max-w-[440px]">
+      <DialogContent className="sm:max-w-[440px] max-h-[90vh] overflow-y-auto">
         <DialogHeader>
           <DialogTitle className="flex items-center gap-2 text-xl">
             <div className="p-2 bg-[#46CDCF] text-white rounded-lg">
@@ -106,26 +106,16 @@ export function CreateAnalystModal({
           </DialogDescription>
         </DialogHeader>
 
-        {/* Approval-required notice */}
-        <div className="bg-amber-50 p-3 rounded-lg flex items-start gap-3 border border-amber-200 mt-1">
-          <Clock className="w-4 h-4 text-amber-600 mt-0.5 shrink-0" />
-          <div className="text-xs text-amber-800 leading-relaxed">
-            <strong>Approval Required:</strong> The Executive can only{" "}
-            <strong>request</strong> a new analyst. A Super Admin must approve
-            the request before the account is created.
-          </div>
+        {/* Compact approval notice */}
+        <div className="bg-amber-50 px-3 py-2 rounded-lg flex items-center gap-2 border border-amber-200 text-xs text-amber-800">
+          <Clock className="w-3.5 h-3.5 shrink-0" />
+          <span>
+            <strong>Approval required</strong> — a Super Admin must approve
+            before the account is created. Password min 8 chars.
+          </span>
         </div>
 
-        <div className="bg-blue-50/50 p-3 rounded-lg flex items-start gap-3 border border-blue-100">
-          <ShieldCheck className="w-4 h-4 text-blue-600 mt-0.5 shrink-0" />
-          <div className="text-xs text-blue-800 leading-relaxed">
-            <strong>Security Note:</strong> Passwords must be at least 8
-            characters. Use{" "}
-            <em>Junior Analyst</em> role for initial onboarding.
-          </div>
-        </div>
-
-        <form onSubmit={handleSubmit} className="space-y-4 py-1">
+        <form onSubmit={handleSubmit} className="space-y-3 py-1">
           <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
             <div className="space-y-1.5">
               <label className="text-sm font-medium">First Name</label>
