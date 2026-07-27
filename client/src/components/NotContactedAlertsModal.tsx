@@ -12,8 +12,6 @@ import {
   TableHeader,
   TableRow,
 } from "@/components/ui/table";
-import { Badge } from "@/components/ui/badge";
-
 export function NotContactedAlertsModal({
   open,
   onOpenChange,
@@ -108,7 +106,7 @@ export function NotContactedAlertsModal({
         <DialogHeader>
           <DialogTitle className="flex items-center gap-2">
             <span className="w-2 h-2 rounded-full bg-red-500 animate-pulse" />
-            Not Contacted Alerts
+            Pending Contact Alerts
           </DialogTitle>
         </DialogHeader>
         <div className="max-h-[60vh] overflow-y-auto mt-4">
@@ -119,7 +117,6 @@ export function NotContactedAlertsModal({
                 <TableHead>Customer</TableHead>
                 <TableHead>Reason</TableHead>
                 <TableHead>Amount</TableHead>
-                <TableHead>Severity</TableHead>
                 <TableHead>Action Needed</TableHead>
               </TableRow>
             </TableHeader>
@@ -137,19 +134,6 @@ export function NotContactedAlertsModal({
                   </TableCell>
                   <TableCell className="font-semibold text-gray-900">
                     {alert.amount}
-                  </TableCell>
-                  <TableCell>
-                    <Badge
-                      className={`${
-                        alert.severity === "HIGH"
-                          ? "bg-red-500"
-                          : alert.severity === "MEDIUM"
-                            ? "bg-orange-500"
-                            : "bg-teal-500"
-                      } text-white border-0`}
-                    >
-                      {alert.severity}
-                    </Badge>
                   </TableCell>
                   <TableCell>
                     <button className="text-[11px] font-bold text-blue-600 hover:underline">
