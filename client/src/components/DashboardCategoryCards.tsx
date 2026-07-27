@@ -1,20 +1,10 @@
 import { useEffect, useState } from "react";
 import { useLocation } from "wouter";
-import type { LucideIcon } from "lucide-react";
-import {
-  Layers,
-  Inbox,
-  CheckCircle2,
-  ArrowLeftRight,
-  Wallet,
-  Users,
-  Clock,
-  ChevronRight,
-} from "lucide-react";
 import { getAlerts } from "@/hooks/use-alert-settings";
 import { getAlertOverrides } from "@/hooks/use-alert-status";
 import { UnreviewedAccountsModal } from "@/components/UnreviewedAccountsModal";
 import { NotContactedAlertsModal } from "@/components/NotContactedAlertsModal";
+import { SuspectedTransactionsModal } from "@/components/SuspectedTransactionsModal";
 
 // Client dashboard categories (segregation sheet, Row 7). The same set renders
 // on BOTH the analyst and executive dashboards, with live counts + click-through.
@@ -82,17 +72,6 @@ export function computeCategoryStats(): CategoryStats {
   };
 }
 
-interface CardDef {
-  label: string;
-  value: number;
-  sub?: string;
-  icon: LucideIcon;
-  chip: string; // icon chip bg + text colour
-  value_color: string; // number colour
-  hover: string; // hover border colour
-  onClick: () => void;
-}
-
 export function DashboardCategoryCards({
   role,
 }: {
@@ -102,6 +81,7 @@ export function DashboardCategoryCards({
   const [stats, setStats] = useState<CategoryStats>(computeCategoryStats);
   const [unreviewedOpen, setUnreviewedOpen] = useState(false);
   const [notContactedOpen, setNotContactedOpen] = useState(false);
+  const [suspectedTxnOpen, setSuspectedTxnOpen] = useState(false);
 
   // Recompute whenever an alert is actioned/reassigned (any tab or login).
   useEffect(() => {
@@ -119,117 +99,78 @@ export function DashboardCategoryCards({
 
   const alertsHref = role === "EXECUTIVE" ? "/alert-assignments" : "/category/All";
 
-  const cards: CardDef[] = [
+  const cards: {
+    label: string;
+    value: number;
+    sub?: string;
+    color?: string;
+    onClick: () => void;
+  }[] = [
     {
       label: "Total Alerts",
       value: stats.total,
-      sub: "All alerts in the system",
-      icon: Layers,
-      chip: "bg-slate-100 text-slate-600",
-      value_color: "text-gray-900",
-      hover: "hover:border-slate-300",
       onClick: () => navigate(alertsHref),
     },
     {
       label: "Opened Alerts",
       value: stats.opened,
-      sub: `${stats.assigned} Assigned · ${stats.unassigned} Unassigned`,
-      icon: Inbox,
-      chip: "bg-blue-50 text-blue-600",
-      value_color: "text-gray-900",
-      hover: "hover:border-blue-300",
+      sub: `Assigned ${stats.assigned} · Unassigned ${stats.unassigned}`,
       onClick: () => navigate(alertsHref),
     },
     {
       label: "Closed Alerts",
       value: stats.closed,
-      sub: `${stats.confirmedFraud} Fraud · ${stats.nonFraud} Non-Fraud`,
-      icon: CheckCircle2,
-      chip: "bg-emerald-50 text-emerald-600",
-      value_color: "text-gray-900",
-      hover: "hover:border-emerald-300",
+      sub: `Confirmed Fraud ${stats.confirmedFraud} · Non-Fraud ${stats.nonFraud}`,
       onClick: () => navigate("/category/Closed-Alerts"),
     },
     {
       label: "Suspected Transactions",
       value: stats.suspectedTransactions,
-      sub: "Flagged for review",
-      icon: ArrowLeftRight,
-      chip: "bg-violet-50 text-violet-600",
-      value_color: "text-gray-900",
-      hover: "hover:border-violet-300",
-      onClick: () => navigate("/transactions"),
+      onClick: () => setSuspectedTxnOpen(true),
     },
     {
       label: "Suspected Accounts",
       value: stats.suspectedAccounts,
-      sub: "Un-reviewed accounts",
-      icon: Wallet,
-      chip: "bg-amber-50 text-amber-600",
-      value_color: "text-gray-900",
-      hover: "hover:border-amber-300",
       onClick: () => setUnreviewedOpen(true),
     },
     {
       label: "Suspected Customers",
       value: stats.suspectedCustomers,
-      sub: "Under monitoring",
-      icon: Users,
-      chip: "bg-cyan-50 text-cyan-600",
-      value_color: "text-gray-900",
-      hover: "hover:border-cyan-300",
       onClick: () => navigate(alertsHref),
     },
     {
       label: "Pending Contact Alerts",
       value: stats.pending,
-      sub: "Awaiting customer contact",
-      icon: Clock,
-      chip: "bg-orange-50 text-orange-600",
-      value_color: "text-orange-600",
-      hover: "hover:border-orange-300",
+      color: "text-amber-600",
       onClick: () => setNotContactedOpen(true),
     },
   ];
 
   return (
     <>
-      <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 xl:grid-cols-7 gap-3 p-4 sm:p-6">
-        {cards.map((c, i) => {
-          const Icon = c.icon;
-          return (
-            <button
-              key={i}
-              type="button"
-              onClick={c.onClick}
-              className={`group flex flex-col justify-between gap-4 rounded-xl border border-gray-100 bg-white p-4 text-left shadow-sm transition-all duration-200 hover:-translate-y-0.5 hover:shadow-md ${c.hover}`}
+      <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 xl:grid-cols-7 divide-x divide-y xl:divide-y-0 divide-gray-100 border-t border-gray-100">
+        {cards.map((c, i) => (
+          <button
+            key={i}
+            type="button"
+            onClick={c.onClick}
+            className="flex flex-col items-center justify-center gap-1 px-3 py-6 text-center min-w-0 cursor-pointer hover:bg-gray-50 transition-colors"
+          >
+            <span
+              className={`text-2xl xl:text-3xl font-bold ${c.color || "text-gray-900"}`}
             >
-              <div className="flex items-center justify-between">
-                <span
-                  className={`flex h-9 w-9 items-center justify-center rounded-lg ${c.chip}`}
-                >
-                  <Icon className="h-[18px] w-[18px]" />
-                </span>
-                <ChevronRight className="h-4 w-4 text-gray-300 transition-all group-hover:translate-x-0.5 group-hover:text-gray-500" />
-              </div>
-              <div>
-                <div
-                  className={`text-2xl xl:text-[26px] font-bold leading-none ${c.value_color}`}
-                >
-                  {c.value}
-                </div>
-                <div className="mt-1.5 text-[12.5px] font-semibold text-gray-700 leading-tight">
-                  {c.label}
-                </div>
-                {c.sub && (
-                  <div className="mt-1 text-[10.5px] text-gray-400 leading-tight">
-                    {c.sub}
-                  </div>
-                )}
-              </div>
-            </button>
-          );
-        })}
+              {c.value}
+            </span>
+            <span className="text-[12px] xl:text-[13px] font-medium text-slate-500 leading-tight">
+              {c.label}
+            </span>
+            {c.sub && (
+              <span className="text-[10px] text-gray-400 mt-0.5 leading-tight">
+                {c.sub}
+              </span>
+            )}
+          </button>
+        ))}
       </div>
 
       <UnreviewedAccountsModal
@@ -239,6 +180,10 @@ export function DashboardCategoryCards({
       <NotContactedAlertsModal
         open={notContactedOpen}
         onOpenChange={setNotContactedOpen}
+      />
+      <SuspectedTransactionsModal
+        open={suspectedTxnOpen}
+        onOpenChange={setSuspectedTxnOpen}
       />
     </>
   );
