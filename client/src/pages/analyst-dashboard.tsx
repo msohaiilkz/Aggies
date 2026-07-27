@@ -526,15 +526,34 @@ export default function FraudDashboard({
   };
 
   const handleAlertAction = (alertId: string, action: string, data?: any) => {
+    // A grouped alert is a parent (Alert Count > 1) plus its child alerts. Any
+    // action other than OPEN is applied to the WHOLE group — the parent and ALL
+    // of its children move to the same status together, whether the analyst
+    // actioned the parent or one of the children. OPEN only puts the single
+    // opened alert under review (siblings stay as they are).
+    const parentId = alertId.split("-sub-")[0];
+    const parent = alerts.find((a) => a.id === parentId);
+    const childCount = Math.max(0, (parent?.alertCount || 1) - 1);
+    const groupIds =
+      action === "OPEN"
+        ? [alertId]
+        : [
+            parentId,
+            ...Array.from(
+              { length: childCount },
+              (_, i) => `${parentId}-sub-${i + 1}`,
+            ),
+          ];
+
     // Suspend Account marks the account suspended WITHOUT closing the alert —
     // the alert stays active until the analyst closes it with Mark as Fraud.
     if (action === "SUSPEND_ACCOUNT") {
       setAlerts((prev) =>
         prev.map((a) =>
-          a.id === alertId ? { ...a, suspended: true } : a,
+          a.id === parentId ? { ...a, suspended: true } : a,
         ),
       );
-      setAlertOverride(alertId, { suspended: true });
+      groupIds.forEach((id) => setAlertOverride(id, { suspended: true }));
       return;
     }
 
@@ -552,7 +571,7 @@ export default function FraudDashboard({
 
     setAlerts((prev) =>
       prev.map((alert) => {
-        if (alert.id === alertId) {
+        if (alert.id === parentId) {
           if (action === "NOT_CONTACTED") {
             return {
               ...alert,
@@ -569,7 +588,8 @@ export default function FraudDashboard({
       }),
     );
 
-    if (newStatus) setAlertOverride(alertId, { status: newStatus });
+    if (newStatus)
+      groupIds.forEach((id) => setAlertOverride(id, { status: newStatus }));
   };
 
   const filteredAlerts = alerts.filter((alert) => {
