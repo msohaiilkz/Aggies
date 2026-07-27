@@ -1,6 +1,6 @@
 import { useEffect, useState } from "react";
 import { useLocation } from "wouter";
-import { getAlerts } from "@/hooks/use-alert-settings";
+import { initialAlerts } from "@/data/alerts-seed";
 import { getAlertOverrides } from "@/hooks/use-alert-status";
 import { UnreviewedAccountsModal } from "@/components/UnreviewedAccountsModal";
 import { NotContactedAlertsModal } from "@/components/NotContactedAlertsModal";
@@ -9,18 +9,7 @@ import { SuspectedTransactionsModal } from "@/components/SuspectedTransactionsMo
 // Client dashboard categories (segregation sheet, Row 7). The same set renders
 // on BOTH the analyst and executive dashboards, with live counts + click-through.
 
-// Baseline of already-actioned alerts — mirrors the seeded closed/pending alerts
-// shown on the Closed/Fraud screen so the counts are realistic and consistent.
-const DEMO = { fraud: 1, nonFraud: 1, discarded: 1, pending: 1 };
-
-const TERMINAL = [
-  "FRAUD",
-  "RESOLVED",
-  "CONTACTED",
-  "NOT_FRAUD",
-  "DISCARDED",
-  "NOT_CONTACTED",
-];
+const OPEN_STATUSES = ["OPEN", "ASSIGNED", "REOPENED"];
 
 export interface CategoryStats {
   total: number;
@@ -31,44 +20,63 @@ export interface CategoryStats {
   confirmedFraud: number;
   nonFraud: number;
   pending: number;
+  suspended: number;
   suspectedTransactions: number;
   suspectedAccounts: number;
   suspectedCustomers: number;
 }
 
-// Counts are derived live from the shared alert store + status overrides, so they
-// drop/rise as analysts open, close, discard or move alerts to pending contact.
+// Every count is derived from the SAME alert dataset the analyst dashboard shows
+// (initialAlerts) plus the live status overrides — so the cards always match the
+// real alerts, and drop/rise as analysts open, close, discard or move alerts to
+// pending contact. Alert Count (grouped child alerts) feeds Suspected Transactions.
 export function computeCategoryStats(): CategoryStats {
-  const alerts = getAlerts();
   const ov = getAlertOverrides();
-  const eff = (a: { id: string }) =>
-    (ov[a.id]?.status || "OPEN").toUpperCase();
+  const eff = (a: { id: string; status: string }) =>
+    (ov[a.id]?.status || a.status || "ASSIGNED").toUpperCase();
 
-  const opened = alerts.filter((a) => !TERMINAL.includes(eff(a)));
-  const assigned = opened.filter((a) => a.assignedTo).length;
-  const confirmedFraud =
-    alerts.filter((a) => eff(a) === "FRAUD").length + DEMO.fraud;
-  const nonFraud =
-    alerts.filter((a) => ["RESOLVED", "CONTACTED", "NOT_FRAUD"].includes(eff(a)))
-      .length + DEMO.nonFraud;
-  const discarded =
-    alerts.filter((a) => eff(a) === "DISCARDED").length + DEMO.discarded;
-  const pending =
-    alerts.filter((a) => eff(a) === "NOT_CONTACTED").length + DEMO.pending;
+  let opened = 0,
+    assigned = 0,
+    unassigned = 0,
+    confirmedFraud = 0,
+    nonFraud = 0,
+    discarded = 0,
+    pending = 0,
+    suspended = 0,
+    suspectedTransactions = 0;
+  const accounts = new Set<string>();
+  const customers = new Set<string>();
+
+  for (const a of initialAlerts) {
+    const s = eff(a);
+    suspectedTransactions += a.alertCount || 1; // each grouped alert = a flagged txn
+    accounts.add(a.alertCode);
+    customers.add(a.customerName);
+    if (ov[a.id]?.suspended) suspended += 1;
+
+    if (OPEN_STATUSES.includes(s)) {
+      opened += 1;
+      if (a.assignedTo) assigned += 1;
+      else unassigned += 1;
+    } else if (s === "FRAUD") confirmedFraud += 1;
+    else if (["RESOLVED", "CONTACTED", "NOT_FRAUD"].includes(s)) nonFraud += 1;
+    else if (s === "DISCARDED") discarded += 1;
+    else if (s === "NOT_CONTACTED") pending += 1;
+  }
 
   return {
-    total: alerts.length + DEMO.fraud + DEMO.nonFraud + DEMO.discarded + DEMO.pending,
-    opened: opened.length,
+    total: initialAlerts.length,
+    opened,
     assigned,
-    unassigned: opened.length - assigned,
+    unassigned,
     closed: confirmedFraud + nonFraud + discarded,
     confirmedFraud,
     nonFraud,
     pending,
-    // Monitoring metrics (no per-record drill-down store in this build).
-    suspectedTransactions: 300,
-    suspectedAccounts: 120,
-    suspectedCustomers: 85,
+    suspended,
+    suspectedTransactions,
+    suspectedAccounts: accounts.size,
+    suspectedCustomers: customers.size,
   };
 }
 
