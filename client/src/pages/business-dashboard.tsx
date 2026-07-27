@@ -23,9 +23,10 @@ import {
 } from "recharts";
 import DownloadInsightsModal from "@/components/DownloadInsightsModal";
 import { Wallet, Bell } from "lucide-react";
-import { getAlerts } from "@/hooks/use-alert-settings";
-import { UnreviewedAccountsModal } from "@/components/UnreviewedAccountsModal";
-import { NotContactedAlertsModal } from "@/components/NotContactedAlertsModal";
+import {
+  DashboardCategoryCards,
+  computeCategoryStats,
+} from "@/components/DashboardCategoryCards";
 import { useSearch } from "@/hooks/use-search";
 
 const trendData = [
@@ -155,9 +156,6 @@ export default function BusinessDashboard() {
   }, [setPlaceholder]);
   const [isDownloadModalOpen, setIsDownloadModalOpen] = useState(false);
 
-  const [unreviewedModalOpen, setUnreviewedModalOpen] = useState(false);
-  const [notContactedModalOpen, setNotContactedModalOpen] = useState(false);
-
   useEffect(() => {
     setTimeout(() => {
       setIsLoading(false);
@@ -216,11 +214,6 @@ export default function BusinessDashboard() {
     );
   }
 
-  // Opened alerts split by assignment (from the shared alert store).
-  const dashAlerts = getAlerts();
-  const assignedCount = dashAlerts.filter((a) => a.assignedTo).length;
-  const unassignedCount = dashAlerts.length - assignedCount;
-
   return (
     <div className="flex flex-col min-h-screen bg-transparent">
       {/* Dashboard Content */}
@@ -239,7 +232,9 @@ export default function BusinessDashboard() {
               <p className="text-[11px] font-semibold uppercase tracking-wide text-gray-400">
                 Total Alerts
               </p>
-              <p className="text-xl font-bold text-gray-900">{getAlerts().length}</p>
+              <p className="text-xl font-bold text-gray-900">
+                {computeCategoryStats().total}
+              </p>
             </div>
           </div>
         </div>
@@ -266,60 +261,9 @@ export default function BusinessDashboard() {
               </div> */}
             </div>
 
-            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-6 divide-y sm:divide-y-0 sm:divide-x divide-gray-100 px-4 py-8">
-              {[
-                {
-                  label: "Opened Alerts",
-                  value: String(assignedCount + unassignedCount),
-                  sub: `Assigned ${assignedCount} · Unassigned ${unassignedCount}`,
-                },
-                {
-                  label: "Closed Alerts",
-                  value: "18",
-                  sub: "Confirmed Fraud 13 · Non-Fraud 5",
-                },
-                {
-                  label: "Pending Contact Alerts",
-                  value: "16",
-                  color: "text-amber-600",
-                  action: () => setNotContactedModalOpen(true),
-                },
-                {
-                  label: "Suspected Transactions",
-                  value: "300",
-                },
-                {
-                  label: "Suspected Accounts",
-                  value: "120",
-                  action: () => setUnreviewedModalOpen(true),
-                },
-                {
-                  label: "Suspected Customers",
-                  value: "85",
-                },
-              ].map((stat, idx) => (
-                <button
-                  key={idx}
-                  type="button"
-                  onClick={stat.action}
-                  className={`flex flex-col items-center justify-center px-2 py-6 lg:py-4 xl:py-6 text-center min-w-0 ${stat.action ? "cursor-pointer hover:bg-gray-50" : "cursor-default"}`}
-                >
-                  <span
-                    className={`text-3xl xl:text-4xl font-bold mb-1.5 ${stat.color || "text-gray-900"}`}
-                  >
-                    {stat.value}
-                  </span>
-                  <span className="text-[13px] xl:text-sm text-gray-500 font-medium px-2">
-                    {stat.label}
-                  </span>
-                  {stat.sub && (
-                    <span className="text-[11px] text-gray-400 mt-1.5">
-                      {stat.sub}
-                    </span>
-                  )}
-                </button>
-              ))}
-            </div>
+            {/* Client dashboard categories (segregation sheet Row 7) — shared
+                with the analyst dashboard, live counts + click-through. */}
+            <DashboardCategoryCards role="EXECUTIVE" />
           </CardContent>
         </Card>
 
@@ -789,14 +733,6 @@ export default function BusinessDashboard() {
           report={{ type: "Overall Insights" }}
         />
       )}
-      <UnreviewedAccountsModal
-        open={unreviewedModalOpen}
-        onOpenChange={setUnreviewedModalOpen}
-      />
-      <NotContactedAlertsModal
-        open={notContactedModalOpen}
-        onOpenChange={setNotContactedModalOpen}
-      />
     </div>
   );
 }

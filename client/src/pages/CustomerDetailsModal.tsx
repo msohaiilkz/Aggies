@@ -2573,11 +2573,25 @@ export default function CustomerDetailsModal({
               <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
                 <CardTitle className="text-lg font-semibold text-gray-900 flex items-center gap-3 group-hover:text-blue-600 transition-colors">
                   Detailed Transactions
-                  {isDetailedLoading ? (
-                    <Loader2 className="h-5 w-5 animate-spin text-blue-600" />
-                  ) : (
-                    <ChevronDown className={`h-5 w-5 text-gray-400 transition-transform duration-300 ${isDetailedVisible ? "rotate-180 text-blue-600" : ""}`} />
-                  )}
+                  {/* Collapsed by default → "Fetch" button (client Row 2). */}
+                  <Button
+                    type="button"
+                    size="sm"
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      handleLoadDetailed();
+                    }}
+                    className="bg-blue-600 hover:bg-blue-700 text-white gap-2 font-bold transition-all shadow-sm shadow-blue-200"
+                  >
+                    {isDetailedLoading ? (
+                      <Loader2 className="h-4 w-4 animate-spin" />
+                    ) : (
+                      <>
+                        {isDetailedVisible ? "Hide" : "Fetch"}
+                        <ChevronDown className={`h-4 w-4 transition-transform duration-300 ${isDetailedVisible ? "rotate-180" : ""}`} />
+                      </>
+                    )}
+                  </Button>
                 </CardTitle>
                 <div className="flex items-center gap-4">
                   <div className="flex bg-gray-100 p-1 rounded-lg">
@@ -2734,12 +2748,26 @@ export default function CustomerDetailsModal({
               <div className="flex items-center justify-between">
                 <CardTitle className="text-lg flex items-center gap-3 group-hover:text-blue-600 transition-colors">
                   List of All Customer Accounts
-                  {isAccountsLoading ? (
-                    <Loader2 className="h-5 w-5 animate-spin text-blue-600" />
-                  ) : (
-                    <ChevronDown className={`h-5 w-5 text-gray-400 transition-transform duration-300 ${isAccountsVisible ? "rotate-180 text-blue-600" : ""}`} />
-                  )}
                 </CardTitle>
+                {/* No core info shown until fetched → "Fetch" button (client Row 2). */}
+                <Button
+                  type="button"
+                  size="sm"
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    handleLoadAccounts();
+                  }}
+                  className="bg-blue-600 hover:bg-blue-700 text-white gap-2 font-bold transition-all shadow-sm shadow-blue-200"
+                >
+                  {isAccountsLoading ? (
+                    <Loader2 className="h-4 w-4 animate-spin" />
+                  ) : (
+                    <>
+                      {isAccountsVisible ? "Hide" : "Fetch"}
+                      <ChevronDown className={`h-4 w-4 transition-transform duration-300 ${isAccountsVisible ? "rotate-180" : ""}`} />
+                    </>
+                  )}
+                </Button>
               </div>
             </CardHeader>
             {(isAccountsLoading || isAccountsVisible) && (

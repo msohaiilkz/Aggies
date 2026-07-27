@@ -22,6 +22,7 @@ import {
   RotateCcw,
 } from "lucide-react";
 import CustomerDetailsModal from "./CustomerDetailsModal";
+import { DashboardCategoryCards } from "@/components/DashboardCategoryCards";
 import { DatePickerWithRange } from "@/components/date-range-picker";
 import { UnreviewedAccountsModal } from "@/components/UnreviewedAccountsModal";
 import ForceCloseModal from "@/components/ForceCloseModal";
@@ -1025,95 +1026,9 @@ export default function FraudDashboard({
               <DatePickerWithRange className="w-full sm:w-auto" />
             </div>
 
-            {/* Stats Row */}
-            <div className="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-5 divide-y sm:divide-y-0 sm:divide-x divide-gray-100 py-4 sm:py-6">
-              {/* Suspected Accounts */}
-              <div className="bg-white p-5 lg:p-6 xl:p-8 flex flex-col justify-between min-w-0 min-h-[160px]">
-                <div>
-                  <p className="text-3xl sm:text-4xl xl:text-[44px] font-bold text-gray-900 leading-tight">
-                    {stats.suspectedAccounts}
-                  </p>
-                  <p className="text-sm font-medium text-slate-500 mt-1 mb-8">
-                    Suspected Accounts
-                  </p>
-                </div>
-                <button
-                  onClick={() => setStatusFilter(null)}
-                  className="w-full sm:w-max border border-slate-300 text-slate-700 px-4 xl:px-6 py-2 xl:py-2.5 rounded-lg text-sm font-semibold hover:bg-gray-50 transition-all active:scale-95 whitespace-nowrap"
-                >
-                  View all accounts
-                </button>
-              </div>
-
-              {/* Suspended Transactions */}
-              <div className="bg-white p-5 lg:p-6 xl:p-8 flex flex-col justify-between min-w-0 min-h-[160px] border-t sm:border-t-0">
-                <div>
-                  <p className="text-3xl sm:text-4xl xl:text-[44px] font-bold text-gray-900 leading-tight">
-                    {stats.suspendedTransactions}
-                  </p>
-                  <p className="text-sm font-medium text-slate-500 mt-1 mb-8">
-                    Suspended Transactions
-                  </p>
-                </div>
-                <button className="w-full sm:w-max border border-slate-300 text-slate-700 px-4 xl:px-6 py-2 xl:py-2.5 rounded-lg text-sm font-semibold hover:bg-gray-50 transition-all active:scale-95 whitespace-nowrap">
-                  View all transactions
-                </button>
-              </div>
-
-              {/* Total Un-Reviewed Accounts */}
-              <div className="bg-white p-5 lg:p-6 xl:p-8 flex flex-col justify-between min-w-0 min-h-[160px] border-t xl:border-t-0">
-                <div>
-                  <p className="text-3xl sm:text-4xl xl:text-[44px] font-bold text-gray-900 leading-tight">
-                    45
-                  </p>
-                  <p className="text-sm font-medium text-slate-500 mt-1 mb-8">
-                    Total Un-Reviewed Accounts
-                  </p>
-                </div>
-                <button
-                  onClick={() => {
-                    setStatusFilter(null);
-                    setUnreviewedModalOpen(true);
-                  }}
-                  className="w-full sm:w-max border border-slate-300 text-slate-700 px-4 xl:px-6 py-2 xl:py-2.5 rounded-lg text-sm font-semibold hover:bg-gray-50 transition-all active:scale-95 whitespace-nowrap"
-                >
-                  View all accounts
-                </button>
-              </div>
-
-              {/* Not Contacted Alerts */}
-              <div className="bg-white p-5 lg:p-6 xl:p-8 flex flex-col justify-between min-w-0 min-h-[160px] border-t sm:border-t-0 xl:border-t-0 border-r-0 xl:border-r">
-                <div>
-                  <p className="text-3xl sm:text-4xl xl:text-[44px] font-bold text-red-600 leading-tight">
-                    {stats.notContacted}
-                  </p>
-                  <p className="text-sm font-medium text-slate-500 mt-1 mb-8">
-                    Not Contacted Alerts
-                  </p>
-                </div>
-                <button
-                  onClick={() => setStatusFilter("NOT_CONTACTED")}
-                  className="w-full sm:w-max border border-red-200 bg-red-50 text-red-700 px-4 xl:px-6 py-2 xl:py-2.5 rounded-lg text-sm font-semibold hover:bg-red-100 transition-all active:scale-95 whitespace-nowrap"
-                >
-                  View not contacted
-                </button>
-              </div>
-
-              {/* Actual Frauds */}
-              <div className="bg-white p-5 lg:p-6 xl:p-8 flex flex-col justify-between min-w-0 min-h-[160px] border-t xl:border-t-0">
-                <div>
-                  <p className="text-3xl sm:text-4xl xl:text-[44px] font-bold text-gray-900 leading-tight">
-                    13
-                  </p>
-                  <p className="text-sm font-medium text-slate-500 mt-1 mb-8">
-                    Actual Frauds
-                  </p>
-                </div>
-                <button className="w-full sm:w-max border border-slate-300 text-slate-700 px-4 xl:px-6 py-2 xl:py-2.5 rounded-lg text-sm font-semibold hover:bg-gray-50 transition-all active:scale-95 whitespace-nowrap">
-                  View all frauds
-                </button>
-              </div>
-            </div>
+            {/* Client dashboard categories (segregation sheet Row 7) — shared
+                with the executive dashboard, live counts + click-through. */}
+            <DashboardCategoryCards role="ANALYST" />
           </CardContent>
         </Card>
       </div>
