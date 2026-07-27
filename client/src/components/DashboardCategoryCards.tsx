@@ -28,12 +28,13 @@ export interface CategoryStats {
 
 // Every count is derived from the SAME alert dataset the analyst dashboard shows
 // (initialAlerts) plus the live status overrides — so the cards always match the
-// real alerts, and drop/rise as analysts open, close, discard or move alerts to
-// pending contact. Alert Count (grouped child alerts) feeds Suspected Transactions.
+// real alerts. Counting is CASE-level (one customer row = one case): a case stays
+// "Opened" while ANY of its alerts is still active, and only lands in a Closed
+// bucket once ALL of its alerts have been actioned. This mirrors the list, where
+// actioning one alert leaves the rest active. Suspected Transactions counts the
+// individual alerts (Alert Count, i.e. child alerts included).
 export function computeCategoryStats(): CategoryStats {
   const ov = getAlertOverrides();
-  const eff = (a: { id: string; status: string }) =>
-    (ov[a.id]?.status || a.status || "ASSIGNED").toUpperCase();
 
   let opened = 0,
     assigned = 0,
@@ -48,20 +49,38 @@ export function computeCategoryStats(): CategoryStats {
   const customers = new Set<string>();
 
   for (const a of initialAlerts) {
-    const s = eff(a);
-    suspectedTransactions += a.alertCount || 1; // each grouped alert = a flagged txn
+    // Effective status of the case's alerts (parent + children). A child starts
+    // in the parent's seeded state and only changes when it is itself actioned.
+    const seedDefault = a.status === "OPEN" ? "ASSIGNED" : a.status;
+    const childCount = Math.max(0, (a.alertCount || 1) - 1);
+    const members = [(ov[a.id]?.status || seedDefault).toUpperCase()];
+    for (let i = 1; i <= childCount; i++) {
+      members.push(
+        (ov[`${a.id}-sub-${i}`]?.status || seedDefault).toUpperCase(),
+      );
+    }
+
+    suspectedTransactions += a.alertCount || 1; // individual alerts = flagged txns
     accounts.add(a.alertCode);
     customers.add(a.customerName);
     if (ov[a.id]?.suspended) suspended += 1;
 
-    if (OPEN_STATUSES.includes(s)) {
+    const anyActive = members.some((s) => OPEN_STATUSES.includes(s));
+    if (anyActive) {
       opened += 1;
       if (a.assignedTo) assigned += 1;
       else unassigned += 1;
-    } else if (s === "FRAUD") confirmedFraud += 1;
-    else if (["RESOLVED", "CONTACTED", "NOT_FRAUD"].includes(s)) nonFraud += 1;
-    else if (s === "DISCARDED") discarded += 1;
-    else if (s === "NOT_CONTACTED") pending += 1;
+    } else if (members.includes("FRAUD")) {
+      confirmedFraud += 1;
+    } else if (
+      members.some((s) => ["RESOLVED", "CONTACTED", "NOT_FRAUD"].includes(s))
+    ) {
+      nonFraud += 1;
+    } else if (members.includes("DISCARDED")) {
+      discarded += 1;
+    } else if (members.includes("NOT_CONTACTED")) {
+      pending += 1;
+    }
   }
 
   return {

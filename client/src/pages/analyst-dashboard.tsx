@@ -326,34 +326,15 @@ export default function FraudDashboard({
   };
 
   const handleAlertAction = (alertId: string, action: string, data?: any) => {
-    // A grouped alert is a parent (Alert Count > 1) plus its child alerts. Any
-    // action other than OPEN is applied to the WHOLE group — the parent and ALL
-    // of its children move to the same status together, whether the analyst
-    // actioned the parent or one of the children. OPEN only puts the single
-    // opened alert under review (siblings stay as they are).
-    const parentId = alertId.split("-sub-")[0];
-    const parent = alerts.find((a) => a.id === parentId);
-    const childCount = Math.max(0, (parent?.alertCount || 1) - 1);
-    const groupIds =
-      action === "OPEN"
-        ? [alertId]
-        : [
-            parentId,
-            ...Array.from(
-              { length: childCount },
-              (_, i) => `${parentId}-sub-${i + 1}`,
-            ),
-          ];
-
-    // Suspend Account marks the account suspended WITHOUT closing the alert —
-    // the alert stays active until the analyst closes it with Mark as Fraud.
+    // Each alert is actioned INDEPENDENTLY: only the alert the analyst actually
+    // opened and actioned moves to the new status. The customer's other alerts
+    // (the parent or any sibling) stay exactly as they are until each one is
+    // itself opened and actioned.
     if (action === "SUSPEND_ACCOUNT") {
       setAlerts((prev) =>
-        prev.map((a) =>
-          a.id === parentId ? { ...a, suspended: true } : a,
-        ),
+        prev.map((a) => (a.id === alertId ? { ...a, suspended: true } : a)),
       );
-      groupIds.forEach((id) => setAlertOverride(id, { suspended: true }));
+      setAlertOverride(alertId, { suspended: true });
       return;
     }
 
@@ -371,7 +352,7 @@ export default function FraudDashboard({
 
     setAlerts((prev) =>
       prev.map((alert) => {
-        if (alert.id === parentId) {
+        if (alert.id === alertId) {
           if (action === "NOT_CONTACTED") {
             return {
               ...alert,
@@ -388,8 +369,7 @@ export default function FraudDashboard({
       }),
     );
 
-    if (newStatus)
-      groupIds.forEach((id) => setAlertOverride(id, { status: newStatus }));
+    if (newStatus) setAlertOverride(alertId, { status: newStatus });
   };
 
   const filteredAlerts = alerts.filter((alert) => {
@@ -413,6 +393,9 @@ export default function FraudDashboard({
       // Active view shows ONLY Assigned / Open. Any alert the analyst has
       // actioned — Fraud, Not Fraud, Discarded, Suspended or Pending Customer
       // Contact — leaves the active list and moves to the Closed/Fraud screen.
+      // BUT if this parent is actioned while some of the customer's OTHER alerts
+      // (children) are still active, keep the row — those un-actioned alerts must
+      // stay visible. The row re-anchors on an active alert during render.
       if (
         !statusFilter &&
         (alert.status === "RESOLVED" ||
@@ -420,8 +403,21 @@ export default function FraudDashboard({
           alert.status === "DISCARDED" ||
           alert.status === "SUSPENDED" ||
           alert.status === "NOT_CONTACTED")
-      )
-        return false;
+      ) {
+        const overrides = getAlertOverrides();
+        const childCount = Math.max(0, (alert.alertCount || 1) - 1);
+        const seed = initialAlerts.find((s) => s.id === alert.id)?.status;
+        const childDefault = (
+          seed === "OPEN" ? "ASSIGNED" : seed ?? "ASSIGNED"
+        ).toUpperCase();
+        const anyChildActive = Array.from({ length: childCount }).some((_, i) => {
+          const cs = (
+            overrides[`${alert.id}-sub-${i + 1}`]?.status ?? childDefault
+          ).toUpperCase();
+          return ["ASSIGNED", "OPEN", "REOPENED"].includes(cs);
+        });
+        if (!anyChildActive) return false;
+      }
     }
 
     const matchesSearch =
@@ -562,9 +558,13 @@ export default function FraudDashboard({
   const buildChildAlerts = (alert: (typeof filteredAlerts)[number]) => {
     const childCount = Math.max(0, (alert.alertCount || 1) - 1);
     const base = new Date(alert.createdAt);
-    // Each child is a SEPARATE alert with its OWN status (not inherited from
-    // the parent). Its status is tracked independently in the shared store.
+    // Each child is a SEPARATE alert with its OWN status. It STARTS in the same
+    // state its parent was seeded in (active cases → Assigned; already-closed
+    // demo cases → their closed status) and only changes when that child is
+    // itself actioned — actioning the parent does NOT change the children.
     const overrides = getAlertOverrides();
+    const seed = initialAlerts.find((s) => s.id === alert.id)?.status;
+    const childDefault = seed === "OPEN" ? "ASSIGNED" : seed ?? "ASSIGNED";
     return Array.from({ length: childCount }, (_, i) => {
       const d = new Date(base);
       d.setDate(base.getDate() - (i + 1));
@@ -573,7 +573,7 @@ export default function FraudDashboard({
         ...alert,
         id: childId,
         _modalId: alert.id,
-        status: overrides[childId]?.status ?? "ASSIGNED",
+        status: overrides[childId]?.status ?? childDefault,
         alertSource: CHILD_SOURCES[(i + 1) % CHILD_SOURCES.length],
         createdAt: d.toISOString(),
         alertCount: 1,
@@ -1265,8 +1265,31 @@ export default function FraudDashboard({
                   </tr>
                 ) : (
                   filteredAlerts.map((alert, index) => {
-                    const hasChildren = (alert.alertCount || 1) > 1;
-                    const children = hasChildren ? buildChildAlerts(alert) : [];
+                    const allChildren =
+                      (alert.alertCount || 1) > 1 ? buildChildAlerts(alert) : [];
+                    // In the active analyst view a row anchors on an alert that
+                    // is still active and lists only the remaining active alerts
+                    // under it — actioned alerts drop out one by one while the
+                    // customer's un-actioned alerts stay put.
+                    const activeView =
+                      !isExecutive &&
+                      statusFilter !== "CLOSED_ALERTS" &&
+                      !statusFilter;
+                    const isActiveStatus = (s: string) =>
+                      ["ASSIGNED", "OPEN", "REOPENED"].includes(
+                        String(s).toUpperCase(),
+                      );
+                    let anchor = alert;
+                    let children = allChildren;
+                    if (activeView) {
+                      const members = [alert, ...allChildren];
+                      const active = members.filter((m) =>
+                        isActiveStatus(m.status),
+                      );
+                      anchor = (active[0] ?? alert) as typeof alert;
+                      children = active.slice(1);
+                    }
+                    const hasChildren = children.length > 0;
                     const group = hasChildren
                       ? { key: alert.id, children }
                       : undefined;
@@ -1280,7 +1303,7 @@ export default function FraudDashboard({
                     const baseNo = index + 1;
                     return (
                       <Fragment key={alert.id}>
-                        {renderAlertRow(alert, false, group, baseNo)}
+                        {renderAlertRow(anchor, false, group, baseNo)}
 
                         {isExpanded &&
                           shownChildren.map((child, i) =>
